@@ -96,15 +96,20 @@ function Create-Certificate
         [String]$IP = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
         [Alias('SANs','SAN')]
         [String[]]$SubjectAlternativeNames = $null,
-        [String]$CertificateAuthorityServer = "ADCS-SUB01",
-        [String]$CertificateAuthorityName = "MSB-SUB01-CA",
-        [String]$CertificateTemplateName = "MSBWebServerAuto",
+        [Parameter(Mandatory=$True)]
+        [String]$CertificateAuthorityServer = "",
+        [Parameter(Mandatory=$True)]
+        [String]$CertificateAuthorityName = "",
+        [Parameter(Mandatory=$True)]
+        [String]$CertificateTemplateName = "",
         [String]$CertificatePassword = 'testpassword',
         [String]$CertificateChainPath = $null,
         [String]$Country = 'US',
         [String]$State = 'IL',
-        [String]$Locality = 'Effingham',
-        [String]$Organization = 'Midland States Bank',
+        [Parameter(Mandatory=$True)]
+        [String]$Locality = "",
+        [Parameter(Mandatory=$True)]
+        [String]$Organization = "",
         [String]$OrganizationalUnit = 'N/A',
         [String]$OpenSSLPath = (Get-command openssl*).Source,
         [String]$OutputPath = "$((get-location).path)\$Name",
