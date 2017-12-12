@@ -118,29 +118,6 @@ function Create-Certificate
         [switch]$UseDefaultSANs = $true
     )
 
-    <#
-        [string]$Name = 'www'
-        [string]$Domain = 'midlandfa.com'
-        [String]$CommonName = ($Name + '.' + $Domain)
-        [String]$IP = '192.168.69.211'
-        [String[]]$SubjectAlternativeNames = $null
-        [String]$CertificateAuthorityServer = "ADCS-SUB01"
-        [String]$CertificateAuthorityName = "MSB-SUB01-CA"
-        [String]$CertificateTemplateName = "MSBWebServerAuto"
-        [String]$CertificatePassword = 'testpassword'
-        [String]$CertificateChainPath = $null
-        [String]$Country = 'US'
-        [String]$State = 'IL'
-        [String]$Locality = 'Effingham'
-        [String]$Organization = 'Midland States Bank'
-        [String]$OrganizationalUnit = 'N/A'
-        [String]$OpenSSLPath = ((Get-command openssl*).Source)
-        [String]$OutputPath = "$((get-location).path)\$Name"
-        [switch]$OverWrite = $false
-        [switch]$Regenerate = $false
-        [switch]$UseDefaultSANs = $true
-    #>
-
     ## Generate the Fully Qualified Domain Name
     $FQDN = ($name + '.' + $Domain)
 
