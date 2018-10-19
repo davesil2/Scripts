@@ -92,37 +92,6 @@
     #############################################################################################################################################
     ## Script Input Validation
     #############################################################################################################################################
-
-    if ($functionTesting)
-    {
-        $vCenterServer = 'd01-pa-vsivc01.esb.com'
-        $vCenterCreds = Get-Credential ($env:UserDomain + '\' + $env:USERNAME)
-        $DomainJoinCreds = $vCenterCreds
-        $LocalAdminCreds = Get-Credential -Message 'Local Admin Creds'
-        $ServerName = 'TL-DHSAP01'
-        $ServerEnv = 'Test'
-        $ServerOS = 'Windows'
-        $ServerType = 'DB'
-        $TemplateName = '*2016'
-        $TemplateLocation = 'Templates'
-        $vmLocation = 'POC - Testing'
-        $TargetDatastoreName = '*VVOL*'
-        $TargetDataStoreIsCluster = $False
-        $TargetClusterName = 'Servers'
-        $TargetClusterIsHost = $false
-        $ServerIP = '10.1.4.189'
-        $ServerSubnet = '255.255.255.0'
-        $ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
-        $ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
-        $OUPath = 'OU=QA,OU=Non-PCI,OU=Servers,DC=esb,DC=com'
-        $CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS)
-        $SQLServerVersion = '2016'
-        $DNSSErvers = (((Get-DnsClientServerAddress | select -first 1).serveraddresses))
-        $DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name)
-        $ServerAdmins = ('{0} Admins' -f $ServerOS)
-        $ServerGroupsOU = 'OU=Server Groups,OU=Enterpriseadmin,DC=esb,DC=com'
-        $ServiceAccountOU = 'OU=Service Accounts,OU=EnterpriseAdmin,DC=esb,DC=com'
-    }
     
     ##Output Values
     $variables = Get-Variable vCenterServer,vCenterCreds,DomainJoinCreds,LocalAdminCreds,ServerName,ServerEnv,ServerType,ServerOS,TemplateName,TemplateLocation,VMLocation,TargetDataStoreName,TargetDatastoreIsCluster,TargetClusterName,TargetClusterIsHost,ServerIP,ServerSubnet,ServerGW,ServerNetworkName,OUPath,CustomOSSpecName,SqlServerVersion,DNSServers,DNSDomain,ServerAdmins,ServerGroupsOU,ServiceAccountOU
