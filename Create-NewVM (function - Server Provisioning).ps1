@@ -7,7 +7,7 @@
         [Parameter(Mandatory=$true)]
         [System.Management.Automation.PSCredential]$vCenterCreds,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory=$true)]
         [System.Management.Automation.PSCredential]$LocalAdminCreds,
 
         [Parameter(Mandatory=$false)]
@@ -81,8 +81,10 @@
         [Parameter(Mandatory=$false)]
         [String]$ServerAdmins = ('{0} Admins' -f $ServerOS),
 
+        [Parameter(Mandatory=$true)]
         [String]$ServerGroupsOU,
 
+        [Parameter(Mandatory=$true)]
         [String]$ServiceAccountOU
     )
 
