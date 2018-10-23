@@ -536,7 +536,7 @@
             Write-Verbose ('Succesfully Joined domain, waiting for reboot...')
 
             ##Wait/Test for machine to be available
-            $status = (Test-Ping -Server $servername -Count 1)
+            $status = (Test-Ping -Server $servername -Count 1 -ErrorAction SilentlyContinue)
             While (($status.status -ne 'Success') -and ($status)) 
             {
                 Start-Sleep 15
@@ -547,7 +547,7 @@
                 {
                     Write-Verbose ('Server Name resolves with DNS, clearing Cache!')
                     Clear-DnsClientCache
-                    $status = (Test-Ping -Server $servername -Count 1)
+                    $status = (Test-Ping -Server $servername -Count 1 -ErrorAction SilentlyContinue)
                 }
             }
 
@@ -811,6 +811,34 @@
     }
     Invoke-Command -ComputerName $ServerName -ScriptBlock $Script
     }
+
+    #endregion
+
+    #region Install SQL Server
+    ##Define SQL Service Account
+    if ($ServerName -like '*N')
+    {
+        #splice up the name and remove the location code 
+        $SQLVirtualName = ($ServerName.Split('-')[1,2] -join '-')
+        #replace tailing 3 char (likely 01N) with 01C for cluster name
+        $SQLVirtualName = $SQLVirtualName.Remove($SQLVirtualName.Length -3) + '01C'
+        #name service account as the cluster rather than node (for kerberos support later)
+        $svcAccount = ('s-{0}' -f $SQLServerVersion)
+    }
+    else {
+        #name service account as the server name prefixed with s-
+        $svcAccount = ('s-{0}' -f $ServerName)
+        #Generate random password (must have function available)
+        if (!$password) {$password = Get-RandomPassword}
+    }
+
+    ##Define Group names with Server name
+    $SysAdmingroup = ('SQL_{0}_SysAdmin' -f $ServerName)
+    $FileShareGroup = ('FS_{0}-DataAccess$_Modify' -f $ServerName)
+    $InstallMgmtStudio = $false
+
+
+
 
     #endregion
 
