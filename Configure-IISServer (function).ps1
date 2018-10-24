@@ -1,5 +1,43 @@
 function Configure-IISServer
 {
+    <#
+    .SYNOPSIS
+    Install and configure IIS on specified Server
+    
+    .DESCRIPTION
+    Provides a standard tool that has pre-defined components and configuration to ensure a standard implementation of IIS with components.
+
+    Additionally, this function will allow you to customize the configuration as necessary.
+    
+    .EXAMPLE
+    $Creds = Get-Credential
+
+    Configure-IIS -ServerName <name of server> -AdminCreds $creds
+
+    This example shows a basic usage.  The Drive Letter and Roles and Features are pre-selected in the default values
+
+    .EXAMPLE
+    $creds = Get-Credential
+
+    Configure-IISServer -ServerName <Name of Server> -AdminCreds $Creds -RootDriveLetter I -RolesAndFeatures ('Web-Server','Web-WebServer')
+
+    .PARAMETER ServerName
+    The name of the server to install and configure IIS on
+
+    .PARAMETER AdminCreds
+    Credentials as defined in the System.Management.Automation.PSCredential type.  Commonly this is the return value of Get-Credential
+
+    .PARAMETER RootDriveLetter
+    The Letter of the Drive IIS InetPub and sub folders will be moved to
+
+    Default Value = E
+
+    .PARAMETER RolesandFeatures
+    The Roles and Features to include as part of the IIS Config/Install
+
+    Default Value = ('Web-Server','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Health','Web-http-logging','Web-custom-logging','web-http-tracing','web-performance','web-stat-compression','web-dyn-compression','web-security','web-filtering','web-basic-auth','web-ip-security','web-url-auth','web-windows-auth','web-app-dev','web-net-ext45','web-appinit','web-asp','web-asp-net45','web-isapi-ext','web-isapi-filter','web-mgmt-console','web-mgmt-service','Web-Log-Libraries','Web-Request-Monitor','Web-Digest-Auth','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Scripting','Web-WMI')
+
+    #>
     Param(
         [Parameter(Mandatory=$True)]
         [ValidateLength(1,15)]
@@ -9,6 +47,7 @@ function Configure-IISServer
         [System.Management.Automation.PSCredential]$AdminCreds,
 
         [Parameter(Mandatory=$false)]
+        [ValidateLength(1,1)]
         [String]$RootDriveLetter = 'E',
 
         [Parameter(Mandatory=$false)]
@@ -19,24 +58,36 @@ function Configure-IISServer
     #region Validate Variables
     ##Test Server Exists
     try {
-        
+        Write-Verbose ('Checking if Server exists via Ping...')
+        ### Simple Ping Test for IP address usage
+        if ((new-object System.Net.NetworkInformation.Ping).Send($ServerName).Status -ne 'Success')
+        {
+            throw ('Server "{0}" appears to be inaccessible' -f $ServerName)
+        }
+        Write-Verbose ('IP Address {0} not responding to ping...' -f $ServerName)
     }
     catch {
-        
+        throw ('Problem occured checking server: {0}' -f $error[0])
     }
     ##Test Admin Credentials
     try {
-        
+        Write-Verbose ('Testing Admin Credentials...')
+        Connect-WSMan -ComputerName $ServerName -Credential $AdminCreds
+        Write-Verbose ('Succesfully connected "{0}" with Credentials {1}' -f $ServerName,$AdminCreds.UserName)
     }
     catch {
-        
+        throw ('Problem testing Admin Credentials to server {0}: {1} ' -f $servername,$error[0])
     }
+    
     ##Verify Drive Exists
     try {
-        
+        Write-Verbose ('Checking for Drive Letter...')
+        $result = Invoke-Command -ComputerName $ServerName -ScriptBlock ([scriptblock]::Create("Get-Volume -DriveLetter $RootDriveLetter")) -ErrorAction SilentlyContinue
+        if (!$result) { throw 'Drive Letter not found!'}
+        Write-Verbose ('Drive Letter "{0}" found on {1}' -f $RootDriveLetter,$servername)
     }
     catch {
-        
+        throw ('Drive letter specified "{0}" does not exist' -f $RootDriveLetter)
     }
 
     Write-Host ('Variable Validated, Moving on to Install and Configure...')
