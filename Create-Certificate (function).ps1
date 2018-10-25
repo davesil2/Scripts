@@ -204,7 +204,7 @@ function Create-Certificate
             $Template += "organizationalUnitName = $OrganizationalUnit" + [environment]::newline
             $Template += "commonName = $CommonName" + [environment]::newline
 
-            Set-Content -Value $Template -Path $OutputPath\$name.cfg
+            $Template | Set-Content -Path "$OutputPath\$name.cfg" -Encoding Ascii
 
             Write-Host "Created Config file at $OutputPath\$Name.cfg"
         }
@@ -225,14 +225,14 @@ function Create-Certificate
         If ($Regenerate -or !(Test-Path -Path $Outputpath\$Name.crt))
         {
             ## Submit Request to CA
-            $exp = "certreq.exe -submit -config '$CertificateAuthorityServer\$CertificateAuthorityName' -attrib 'CertificateTemplate:$CertificateTemplateName' $OutputPath\$Name.csr $OutputPath\$Name.crt" 
+            $exp = "certreq.exe -submit -config '$CertificateAuthorityServer\$CertificateAuthorityName' -attrib 'CertificateTemplate:$CertificateTemplateName' '$OutputPath\$Name.csr' '$OutputPath\$Name.crt'" 
             Invoke-expression $exp | out-null
         }
 
         if (!$CertificateChainPath)
         {
             ## download Certificate Chain
-            Invoke-WebRequest -URI "https://$CertificateAuthorityServer/certsrv/certnew.p7b?ReqID=CACert&Renewal=6&Mode=inst&Enc=b64" -UseDefaultCredentials -OutFile $OutputPath\chain.p7b
+            Invoke-WebRequest -URI "http://$CertificateAuthorityServer/certsrv/certnew.p7b?ReqID=CACert&Renewal=6&Mode=inst&Enc=b64" -UseDefaultCredentials -OutFile $OutputPath\chain.p7b
 
             ## Convert p7b (pkcs7) to pem
             Invoke-expression "& '$OpensslPath' pkcs7 -in $OutputPath\chain.p7b -out $OutputPath\chain.pem -print_certs"
