@@ -89,32 +89,49 @@ function Create-Certificate
         [Parameter(Mandatory=$True)]
         [Alias('Server','ServerName')]
         [string]$Name,
+
         [Alias('DomainName')]
-        [string]$Domain = 'midlandsb.com',
+        [string]$Domain = ($env:USERDNSDOMAIN),
+        
         [String]$CommonName = ($Name + '.' + $Domain),
+        
         [Alias('IPAddress','IP Address')]
         [String]$IP = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
+        
         [Alias('SANs','SAN')]
         [String[]]$SubjectAlternativeNames = $null,
-        [Parameter(Mandatory=$True)]
-        [String]$CertificateAuthorityServer = "",
-        [Parameter(Mandatory=$True)]
-        [String]$CertificateAuthorityName = "",
+        
+        [String]$CertificateAuthorityServer = ((certutil -ADCA | select-string dnshostname | select -first 1).tostring().split('=')[1]).Trim(),
+        
+        [String]$CertificateAuthorityName = ((certutil -ADCA | select-string displayName | select -first 1).tostring().split('=')[1]).Trim(),
+        
         [Parameter(Mandatory=$True)]
         [String]$CertificateTemplateName = "",
+        
         [String]$CertificatePassword = 'testpassword',
+        
         [String]$CertificateChainPath = $null,
+        
         [String]$Country = 'US',
+        
         [String]$State = 'IL',
+
         [Parameter(Mandatory=$True)]
         [String]$Locality = "",
+
         [Parameter(Mandatory=$True)]
         [String]$Organization = "",
+
         [String]$OrganizationalUnit = 'N/A',
+
         [String]$OpenSSLPath = (Get-command openssl*).Source,
-        [String]$OutputPath = "$((get-location).path)\$Name",
+
+        [String]$OutputPath = "$((get-location).path)\$Name.$Domain",
+
         [switch]$OverWrite = $false,
+
         [switch]$Regenerate = $false,
+
         [switch]$UseDefaultSANs = $true
     )
 
