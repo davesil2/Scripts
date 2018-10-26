@@ -700,68 +700,6 @@
 
     #endregion
 
-    #region Prepare for Applications (IIS and SQL so far)
-    #############################################################################################################################################
-    ## Prepare for Applications (IIS and SQL so far)
-    #############################################################################################################################################
-
-    $VM = Get-VM $ServerName -Verbose:$false
-
-    If ($ServerOS -eq 'Windows' -and $ServerType -eq 'DB' -and $SQLServerVersion)
-    {
-        # Add Folders for Mount Points
-        Write-Verbose ('Creating Table for Mount Points..')
-        $MountPoints = @()
-        if ($SQLServerVersion -eq '2016') {$MountPoints += New-Object psobject -Property @{Name='MSSQL13.MSSQLSERVER';Size=10}}
-        if ($SQLServerVersion -eq '2014') {$MountPoints += New-Object psobject -Property @{Name='MSSQL12.MSSQLSERVER';Size=10}}
-        if ($SQLServerVersion -eq '2012') {$MountPoints += New-Object psobject -Property @{Name='MSSQL11.MSSQLSERVER';Size=10}}
-        $MountPoints += New-Object psobject -Property @{Name='SQLData1';Size=20}
-        $MountPoints += New-Object psobject -Property @{Name='SQLLogs1';Size=10}
-        $MountPoints += New-Object psobject -Property @{Name='TDBData1';Size=10}
-        $MountPoints += New-Object psobject -Property @{Name='TDBLogs1';Size=10}
-        Write-Verbose ($MountPoints)
-
-        ## Add disks, initialize, format, mount, fix permissions
-        Write-Verbose ('Iterating through Mount Points...')
-        ForEach ($MP in $MountPoints)
-        {
-            Write-Verbose ('Creating Mount Point for E:\{0}...' -f $MP.Name)
-            $result = $null
-            Write-Verbose ('Adding {0} GB Disk to VM' -f $MP.size)
-            $result = New-HardDisk -CapacityGB $MP.size -Datastore $TargetDatastore.Name -VM $VM -Verbose:$false
-            if (!$Result) { throw ('New Disk Added') }
-
-            Write-Verbose ('Executing Script on Server for disk...')
-            $Script = {
-                Param($MP)
-
-                # Create Folder
-                New-Item ('E:\{0}' -f $MP.Name) -ItemType container | Out-Null
-        
-                # Get New Disk and Initialize and create partition
-                $Disk = Get-Disk | Where {$_.PartitionStyle -eq 'RAW'}
-                Initialize-Disk $Disk.Number | Out-Null
-                New-Partition -DiskNumber $Disk.Number -UseMaximumSize -DriveLetter F | Format-Volume -NewFileSystemLabel ('{0}_{1}' -f $MP.Name.Split('.')[0],$env:COMPUTERNAME) -AllocationUnitSize 64Kb -Confirm:$false | Out-Null
-
-                # Fix up Security on disk
-                $acl = Get-Acl F:\
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'creator owner'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
-                $acl | Set-Acl F:\ | Out-Null
-    
-                # remove drive letter and configure mount point
-                Remove-PartitionAccessPath -DiskNumber $Disk.Number -PartitionNumber 2 -AccessPath F:\ | Out-Null
-                Add-PartitionAccessPath -DiskNumber $Disk.Number -PartitionNumber 2 -AccessPath ('E:\{0}' -f $MP.Name) | Out-Null
-            }
-            Invoke-Command -ComputerName $vm.name -ScriptBlock $Script -ArgumentList $MP | Out-Null
-            Write-Verbose ('Done Creating Mount Point E:\{0}' -f $MP.name)
-        }
-    }
-
-    #endregion
-
     #region Install SQL Server
     ##Define SQL Service Account
     Write-verbose ('Defining Variable for SQL')
