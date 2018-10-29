@@ -735,7 +735,7 @@
     try
     {
         Write-Verbose ('Creating AD Service Account...')
-        if (!(Get-ADUser -Filter ('samaccountname -like "*{0}*"' -f $svcAccount))
+        if (!(Get-ADUser -Filter ('samaccountname -like "*{0}*"' -f $svcAccount)))
         {
             $result = $null
             $result = New-ADUser -Name $svcAccount -SamAccountName $svcAccount -UserPrincipalName ('{0}@{1}' -f $svcAccount,$DNSDomain) -PasswordNeverExpires $true -CannotChangePassword $True -Path $ServiceAccountOU -Credential $DomainJoinCreds
@@ -888,7 +888,7 @@
         Write-verbose ('Validated SQL server key is not empty.')
         ##Verify SQL ISO Path
         if (!(Test-Path -Path $SQLISOPath)) { throw ('Unable to get to path {0}' -f $SQLISOPath)}
-        if (!($SQLISOPath -like ('*{0}*' -f $SQLServerVersion)) { throw ('ISO File does not match target version')}
+        if (!($SQLISOPath -like ('*{0}*' -f $SQLServerVersion))) { throw ('ISO File does not match target version')}
         Write-verbose ('Validated SQL Server ISO File path.')
         ##Generate PowerShell Install Script
         $Script = ('##Mount ISO Image from Provided Path' + [environment]::newline) 
