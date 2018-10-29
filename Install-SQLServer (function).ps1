@@ -10,30 +10,173 @@ function Install-SQLServer {
     param (
         [Parameter(Mandatory = $true)]
         [String]$ServerName,
+
+        [Parameter(Mandatory=$false)]
+        [String]$vCenterServer,
+
+        [Parameter(Mandatory=$false)]
         [PSCredential]$vCenterCreds,
+
+        [Parameter(Mandatory=$true)]
         [pscredential]$DomainAdminCreds,
+
+        [Parameter(Mandatory=$False)]
         [String]$TargetDataStoreName,
+
+        [Parameter(Mandatory=$false)]
+        [Switch]$TargetDataStoreIsCluster = $false,
+
+        [Parameter(Mandatory=$false)]
         [Switch]$CreateMountPoints,
+
         [Parameter(Mandatory=$true)]
         [ValidateSet('2016','2014','2012')]
-        [String]$SQLServerVersion = '2016'
+        [String]$SQLServerVersion = '2016',
+
+        [Parameter(Mandatory=$True)]
+        [String]
+        $svcAccount = ('s-{0}' -f $ServerName),
+
+        [Parameter(Mandatory=$True)]
+        [String]
+        $svcAccountOUPath,
+
+        [Parameter(Mandatory=$false)]
+        [String]
+        $svcAccountPassword = ([string]'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%&/()=?*+#_'[(1..12 | ForEach-Object { Get-Random -Maximum 75 })]).Replace(' ','')
     )
 
     #region Validate Input
-    # Check Server Exists
+    ##Validate needed tools
+    try
+    {
+        Write-Verbose ('Checking if required Modules are installed...')
+        if (!(Get-Module -Name ActiveDirectory -ListAvailable)) { throw ('Unable to find ActiveDirectory Module - RSAT PowerShell Modules Required!') }
+        if (!(Get-Module -Name VMware.PowerCLI -ListAvailable)) { throw ('Unable to find VMware PowerCLI Module - This module is required!') }
+        Write-Verbose ('Found Required Modules. Checking if Modules are loaded...')
+        if (!(Get-Module -Name ActiveDirectory))
+        {
+            Write-Verbose ('Active Directory Module not loaded.  Loading Module...')
+            Import-Module ActiveDirectory -Verbose:$false | Out-Null
+            Write-Verbose ('Active Directory Module Loaded')
+        }
+        if (!(Get-Module -Name VMware.PowerCLI))
+        {
+            Write-Verbose ('VMware.PowerCLI Module not loaded.  Loading Module...')
+            Import-Module VMware.PowerCLI -Verbose:$false | Out-Null
+            Write-Verbose ('VMware.PowerCLIy Module Loaded')
+        }
+    }
+    Catch
+    {
+        throw ('Problem Validating required PowerShell Modules: {0}' -f $error[0])
+    }
 
-    # 
+    # Check Server Exists
+    try {
+        Write-Verbose ('Pinging Server to make sure it exists...')
+        $Result = $null
+        $Result = (new-object System.Net.NetworkInformation.Ping).Send($ServerName)
+        if (!($Result.Status -eq 'Successful')) { throw ('Problem resolving or pinging "{0}"' -f $ServerName) }
+        Write-Verbose ('Server "{0}" Responded Succefully to Ping' -f $ServerName)
+    }
+    catch {
+        throw ('A Problem occured validating the server "{0}": {1}' -f $ServerName,$Error[0])
+    }
+
+    # Check Server Connection Credentials
+    try {
+        Write-Verbose ('Testing Domain Admin Credentials...')
+        Connect-WSMan -ComputerName $ServerName -Credential $DomainAdminCreds | Out-Null
+        Write-Verbose ('Succesfully connected "{0}" with Credentials {1}' -f $ServerName,$DomainAdminCreds.UserName)
+    }
+    catch {
+        throw ('Problem testing Domain Admin Credentials to server {0}: {1} ' -f $servername,$error[0])
+    }
+
+    # Validate vCenter Connection
+    try {
+        if ($CreateMountPoints)
+        {
+            if ($global:DefaultVIServer.IsConnected -and $Global:DefaultVIServer.Name -ne $vCenterServer)
+            {
+                Write-Verbose ('Found other vCenter Servers connected.  These will be disconnected...')
+                Disconnect-VIServer -Server $global:defaultviservers -ErrorAction SilentlyContinue -Confirm:$false -Force
+                Write-Verbose ('All vCenter Connections removed')
+            }
+
+            ### If vCenter is not connected, the connection will be attempted
+            Write-Verbose ('Checking for Existing vCenter Connection...')
+            if (!$global:DefaultVIServer.IsConnected -and $global:DefaultVIServer.Name -ne $vCenterServer -and $global:DefaultVIServer.User -ne $vCenterCreds.UserName)
+            {
+                Write-Verbose ('Connecting to vCenter Server {0} ...' -f $vCenterServer)
+                Connect-VIserver -Server $vCenterServer -Credential $vCenterCreds -Force | Out-Null
+                Write-Verbose ('Connected to vCenter Server {1} as {0}' -f $vCenterCreds.UserName,$vCenterServer)
+            }
+            Else
+            {
+                Write-Verbose ('vCenter connection already exists. Continuing...')
+            }
+        }
+        else {
+            Write-Verbose ('Skipping Creating Mount Points!')
+        }
+    }
+    catch {
+        throw ('A problem occured validating connection to vCenter "{0}": {1}' -f $vCenterServer, $error[0])
+    } 
+
+    # Validate Target Datastore
+    try {
+        if ($CreateMountPoints)
+        {
+            if ($TargetDatastoreIsCluster)
+            {
+                Write-Verbose ('Checking for Cluster Datastores...')
+                $TargetDatastore = Get-DatastoreCluster $TargetDatastoreName
+            }
+            Else
+            {
+                Write-Verbose ('Checking for Non-Cluster Datastores...')
+                $TargetDatastore = Get-Datastore $TargetDatastoreName
+            }
+            if (!$TargetDatastore)
+            {
+                Throw ('No Datastore found matching supplied name {0}' -f $TargetDatastoreName)
+            }
+            if ($TargetDatastore.Count -ne 1) 
+            { 
+                throw ('Found {0} datastores like {1}, be more specific with the name!' -f $TargetDatastore.count, $TargetDatastoreName)
+            }
+            Write-Verbose ('Found datastore {0}' -f $TargetDatastore)
+        }
+    }
+    catch {
+        throw ('A problem occured validating target datastore "{0}": {1}' -f $TargetDataStoreName,$error[0])
+    }
+
+    # Checking Service Account Existance
+    try {
+        
+    }
+    catch {
+        
+    }
+
+    # Check AD Service Account OU
+
+    # Checking SysAdmin Group Existance
+
+    # Checking File Share Group Existance
     #endregion
 
     #region configure Mount Points
     if ($CreateMountPoints)
     {
         try {
-            ##Connect to vCenter
-
             ##Get VM from ServerName
             $VM = Get-VM -Name $ServerName
-            Write-Verbose ('Got VM {0} from vCenter' -f $vm.Name)
+            Write-Verbose ('Got VM "{0}" from vCenter' -f $vm.Name)
 
             ##Define List to create
             $MountPoints = @()
@@ -80,19 +223,31 @@ function Install-SQLServer {
                     Write-Verbose ('Disk Configured as "E:\{0}" on "{1}"' -f $MP.Name,$ServerName)
                 }
                 Invoke-Command -ComputerName $vm.name -ScriptBlock $Script -ArgumentList $MP -Credential $DomainAdminCreds
-                Write-Verbose ('Completed Adding and Configuring disks on "{0}"' -f $ServerName)
             }
+            Write-Verbose ('Completed Adding and Configuring disks on "{0}"' -f $ServerName)
         }
         catch {
-            throw ('')
+            throw ('A problem occured configuring the mount points: {0}' -f $error[0])
         }
     }
     #endregion
 
     #region Create/configure accounts and scripts
     # Create Service Account
+    try {
+        Write-Verbose ('Creating AD Service Account')
+    }
+    catch {
+        
+    }
 
     # Create Sysadmin Group
+    try {
+        
+    }
+    catch {
+        
+    }
 
     # Create File Share Group
 
