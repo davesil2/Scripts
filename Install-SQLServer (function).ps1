@@ -67,10 +67,10 @@ function Install-SQLServer {
 
                     ##Fix File System Permissions
                     $acl = Get-Acl F:\
-                    $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'creator owner'})) | Out-Null
-                    $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
-                    $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
-                    $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
+                    $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'creator owner'})) | Out-Null
+                    $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
+                    $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
+                    $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
                     $acl | Set-Acl F:\ | Out-Null
                     Write-Verbose ('Removed unsecure File System permissions')
 
