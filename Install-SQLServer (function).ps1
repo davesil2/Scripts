@@ -9,33 +9,45 @@ function Install-SQLServer {
     #>
     param (
         [Parameter(Mandatory = $true)]
-        [String]$ServerName,
+        [String]
+        $ServerName,
 
         [Parameter(Mandatory=$false)]
-        [String]$vCenterServer,
+        [String]
+        $vCenterServer,
 
         [Parameter(Mandatory=$false)]
-        [PSCredential]$vCenterCreds,
+        [PSCredential]
+        $vCenterCreds,
 
         [Parameter(Mandatory=$true)]
-        [pscredential]$DomainAdminCreds,
+        [pscredential]
+        $DomainAdminCreds,
 
         [Parameter(Mandatory=$False)]
-        [String]$TargetDataStoreName,
+        [String]
+        $TargetDataStoreName,
 
         [Parameter(Mandatory=$false)]
-        [Switch]$TargetDataStoreIsCluster = $false,
+        [Switch]
+        $TargetDataStoreIsCluster = $false,
 
         [Parameter(Mandatory=$false)]
-        [Switch]$CreateMountPoints,
+        [Switch]
+        $CreateMountPoints,
 
         [Parameter(Mandatory=$true)]
         [ValidateSet('2016','2014','2012')]
-        [String]$SQLServerVersion = '2016',
+        [String]
+        $SQLServerVersion = '2016',
 
         [Parameter(Mandatory=$True)]
         [String]
         $svcAccount = ('s-{0}' -f $ServerName),
+
+        [Parameter(Mandatory = $false)]
+        [Switch]
+        $GenerateServiceAccount = $true,
 
         [Parameter(Mandatory=$True)]
         [String]
@@ -43,7 +55,27 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$false)]
         [String]
-        $svcAccountPassword = ([string]'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%&/()=?*+#_'[(1..12 | ForEach-Object { Get-Random -Maximum 75 })]).Replace(' ','')
+        $svcAccountPassword,
+
+        [Parameter(Mandatory=$false)]
+        [String]
+        $DNSDomain = ($env:USERDNSDOMAIN),
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $SysAdminGroup = ('SQL_{0}_SysAdmin' -f $ServerName),
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $SysAdminGroupOUPath,
+
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $GenerateSysAdminGroup = $true,
+
+        [Parameter(Mandatory=$false)]
+        [String]
+        $SQLADminsGroup = 'SQL Admins'
     )
 
     #region Validate Input
@@ -157,16 +189,87 @@ function Install-SQLServer {
 
     # Checking Service Account Existance
     try {
-        
+        if ($GenerateServiceAccount)
+        {
+            Write-Verbose ("Verifying Service account doesn't exist...")
+            $Result = Get-ADUser -Filter ('samaccountname -eq "{0}"' -f $svcAccount)
+            if ($Result) { throw ('Server Account "{0}" already exists' -f $svcAccount) }
+            Write-Verbose ('Service Account Not found, read to create')
+        } else {
+            Write-Verbose ('Verifying Service account exists...')
+            $Result = Get-ADUser -Filter ('samaccountname -eq "{0}"' -f $svcAccount)
+            if (-Not $Result) { throw ('Server Account "{0}" does NOT exists' -f $svcAccount) }
+            Write-Verbose ('Account "{0}" found in AD' -f $svcAccount)
+        }
     }
     catch {
-        
+        throw ('A problem occured checking the service account: {0}' -f $error[0])
+    }
+
+    # Check Password
+    try {
+        if ($GenerateServiceAccount)
+        {
+            ##Generate Password if not specified
+            if (-Not $svcAccountPassword) 
+            {
+                Write-Verbose ('Generating Password')
+                $svcAccountPassword = ([string]'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%&/()=?*+#_'[(1..12 | ForEach-Object { Get-Random -Maximum 75 })]).Replace(' ','')
+                Write-verbose ('Generated Password "{0}" for Account "{1}"' -f $svcAccountPassword,$svcAccount)
+            } else {
+                Write-Verbose ('Using provided password')
+            }
+
+        } else {
+            ##Test user Password
+            if (-Not $svcAccountPassword) { throw ('Not Generating account and no password provided') }
+            Write-Verbose ('Testing provided user and password...')
+            Add-Type -AssemblyName System.DirectoryServices.AccountManagement | Out-Null
+            if (-Not (New-Object System.DirectoryServices.AccountManagement.PrincipalContext('domain')).ValidateCredentials($svcAccount,$svcAccountPassword)) {throw ('Failed testing user "{0}" with provided password' -f $svcAccount)}
+            
+        }
+    }
+    catch {
+        throw ('A problem occured validating the password {0}' -f $error[0])
     }
 
     # Check AD Service Account OU
+    try
+    {
+        $Result = $null
+        if (!(Test-Path ('AD:\{0}' -f $SysAdminGroupOUPath)))
+        {
+            throw ('Invalid OU path "{0}" for Server Groups' -f $SysAdminGroupOUPath)
+        }
+        Write-Verbose ('OU Path: "{0}" for Server Groups is valid' -f $SysAdminGroupOUPath)
 
+        if (!(Test-Path ('AD:\{0}' -f $svcAccountOUPath)))
+        {
+            throw ('Invalid OU path "{0}" for Service Accounts' -f $svcAccountOUPath)
+        }
+        Write-Verbose ('OU Path: "{0}" for Service Accounts is valid' -f $svcAccountOUPath)
+    }
+    Catch
+    {
+        throw ('Problem Validating OU Path {0}: {1}' -f $OUPath, $error[0])
+    }
     # Checking SysAdmin Group Existance
-
+    try {
+        Write-Verbose ('Checking SysAdmin Group...')
+        $Result = $null
+        $Result = Get-ADGroup -Filter ('name -eq "{0}"' -f $SysAdminGroup)
+        if ($GenerateSysAdminGroup)
+        {
+            if ($Result) { throw ('AD Group "{0}" already exists' -f $SysAdminGroup) }
+            Write-Verbose ('AD Group "{0}" is free to be created' -f $SysAdminGroup)
+        } else {
+            if (-Not $Result) { throw ('AD Group "{0}" does not exist, either set GenerateSysAdminGroup to $true or make sure the group already exists!') }
+            Write-Verbose ('AD Group "{0}" found and ready to use!')
+        }
+    }
+    catch {
+        throw ('A problem occured validating SysAdmin AD Group: {0}' -f $error[0])
+    }
     # Checking File Share Group Existance
     #endregion
 
@@ -235,18 +338,51 @@ function Install-SQLServer {
     #region Create/configure accounts and scripts
     # Create Service Account
     try {
-        Write-Verbose ('Creating AD Service Account')
+        if ($GenerateServiceAccount)
+        {
+            Write-Verbose ('Creating AD Service Account...')
+            $result = $null
+            $result = New-ADUser -Name $svcAccount -SamAccountName $svcAccount -UserPrincipalName ('{0}@{1}' -f $svcAccount,$DNSDomain) -PasswordNeverExpires $true -CannotChangePassword $True -Path $svcAccountOUPath -Credential $DomainAdminCreds
+            Write-verbose ('AD User {0} created at {1}' -f $svcAccount,$svcAccountOUPath)
+            Start-Sleep 5
+            $result = Get-ADUser $svcAccount | Set-ADAccountPassword -NewPassword (ConvertTo-SecureString $svcAccountPassword -AsPlainText -Force) -Credential $DomainAdminCreds
+            $result = Get-ADUser $svcAccount | Enable-ADAccount -Credential $DomainAdminCreds
+        } else {
+            write-verbose ('Using Provided username and password')
+        }
     }
     catch {
-        
+        throw ('A problem occured creating the Service Account')
     }
 
     # Create Sysadmin Group
     try {
+        if ($GenerateSysAdminGroup)
+        {
+            Write-Verbose ('Creating AD Group...')
+            $result = $null
+            $result = New-ADGroup -Name $SysAdminGroup -SamAccountName $SysAdminGroup -GroupCategory Security -GroupScope DomainLocal -Path $SysAdminGroupOUPath -Credential $DomainAdminCreds
+            Write-verbose ('AD Group {0} created at {1}' -f $SysAdminGroup,$SysAdminGroupOUPath)
+            Start-Sleep -Seconds 5
+        } else {
+            Write-Verbose ('Using Existing SysAdmin Group')
+        }
+    
+        ##Add SQL Server specific Group to global SQL Admins Group
+        $result = Get-ADGroup $SysAdminGroup | Add-ADGroupMember -Members $SQLAdminsGroup -Credential $DomainAdminCreds
+        Write-verbose ('{0} added to {1} as member of group' -f $SQLAdminsGroup,$SysAdminGroup)
         
+        ##Get Server local administrators group
+        $LocalAdminAccount = ('Local_{0}_Administrators' -f $ServerName)
+
+        if ((Get-ADGroup -Filter ('samaccountname -like "*{0}*"' -f $LocalAdminAccount) -ErrorAction SilentlyContinue))
+        {
+            Get-ADGroup $LocalAdminAccount | Add-ADGroupMember -Members $SQLAdminsGroup -Credential $DomainAdminCreds
+            Write-verbose ('Adding {0} to ensure local admin access with {1}' -f $SQLAdminsGroup,$LocalAdminAccount)
+        }
     }
     catch {
-        
+        throw ('A problem occured creating the SysAdmin AD Group: {0}' -f $error[0])
     }
 
     # Create File Share Group
