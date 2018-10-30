@@ -75,7 +75,19 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$false)]
         [String]
-        $SQLADminsGroup = 'SQL Admins'
+        $SQLADminsGroup = 'SQL Admins',
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $FileShareGroup = ('FS_{0}-DataAccess$_Modify'),
+
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $GenerateFileShareGroup = $true,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $FileShareGroupOUPath
     )
 
     #region Validate Input
@@ -248,6 +260,12 @@ function Install-SQLServer {
             throw ('Invalid OU path "{0}" for Service Accounts' -f $svcAccountOUPath)
         }
         Write-Verbose ('OU Path: "{0}" for Service Accounts is valid' -f $svcAccountOUPath)
+
+        if (!(Test-Path ('AD:\{0}' -f $FileShareGroupOUPath)))
+        {
+            throw ('Invalid OU path "{0}" for Service Accounts' -f $FileShareGroupOUPath)
+        }
+        Write-Verbose ('OU Path: "{0}" for Service Accounts is valid' -f $FileShareGroupOUPath)
     }
     Catch
     {
@@ -270,7 +288,25 @@ function Install-SQLServer {
     catch {
         throw ('A problem occured validating SysAdmin AD Group: {0}' -f $error[0])
     }
+    
     # Checking File Share Group Existance
+    try {
+        Write-Verbose ('Check File Share Group...')
+        $Result = $null
+        $Result = Get-ADGroup -Filter ('name -eq "{0}"' -f $SysAdminGroup)
+        if ($GenerateFileShareGroup)
+        {
+            if ($Result) { throw ('AD Group "{0}" already exists' -f $FileShareGroup) }
+            Write-Verbose ('AD Group "{0}" is free to be created' -f $FileShareGroup)
+        } else {
+            if (-Not $Result) { throw ('AD Group "{0}" does not exist, either set GenerateFileShareGroup to $true or make sure the group already exists!') }
+            Write-Verbose ('AD Group "{0}" found and ready to use.')
+        }
+    }
+    catch {
+        throw ('A problem occured checking File Share Group: {0}' -f $error[0])
+    }
+
     #endregion
 
     #region configure Mount Points
