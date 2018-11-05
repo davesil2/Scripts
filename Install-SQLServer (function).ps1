@@ -17,7 +17,15 @@ function Install-SQLServer {
         8.) Generate Install Script
         9.) Execute Install Script
     .EXAMPLE
-    <to be written>
+    Minimum Install example
+    
+        $Creds = Get-Credential
+        Install-SQLServer -ServerName <name of server> -vCenterCreds $creds -TargetDataStoreName *VVOL* -svcAccountOUPath 'OU=Users,DC=Domain,DC=com' -SysAdminGroupOUPath 'OU=Users,DC=Domain,DC=com' -FileShareGroupOUPath 'OU=Users,DC=Domain,DC=com' -SQLISOPath <Path to ISO on Network> -SQLInstallKey '22222-00000-00000-00000-00000' -CertificateTemplate WebServerAuto -CertificateLocality <City> -CertificateOrganization <company name>
+
+    This example performs the basic install of SQL Server with no customization.
+
+    .EXAMPLE
+
     #>
     param (
         [Parameter(Mandatory = $true)]
@@ -131,7 +139,7 @@ function Install-SQLServer {
         
         [Parameter(Mandatory=$true)]
         [String]
-        $CertificateOutputPath
+        $CertificateOutputPath = '.\'
     )
 
     #region Validate Input
