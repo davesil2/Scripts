@@ -1,9 +1,21 @@
 function Install-SQLServer {
     <#
     .SYNOPSIS
-    <to be written>
+    This Funciton is designed to Install SQL Server with Provided ISO and other parameters
     .DESCRIPTION
-    <to be written>
+    This function generates and executes the installation script for SQL Server on a Windows Server.  This function does the following Actions:
+
+        1.) Generate Mount Points
+            a.) Add new Disks for MSSQL, SQLData, SQLLogs, TDBData, and TDBLogs
+            b.) Clean up Security Permissions to secure
+        2.) Create Service Account
+        3.) Create SysAdmin AD Group
+        4.) Create File Share group
+        5.) Grant Remote Access Permissions
+        6.) Configure Kerberos SPN's
+        7.) Generate SSL Certificate
+        8.) Generate Install Script
+        9.) Execute Install Script
     .EXAMPLE
     <to be written>
     #>
@@ -87,7 +99,39 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$true)]
         [String]
-        $FileShareGroupOUPath
+        $FileShareGroupOUPath,
+
+        [Parameter(Mandatory=$false)]
+        [String]
+        $ServicePackPath,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $SQLISOPath,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $SQLInstallKey,
+
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $InstallMgmtStudio,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $CertificateTemplate,
+
+        [Parameter(Mandator=$true)]
+        [String]
+        $CertificateLocality,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $CertificateOrganization,
+        
+        [Parameter(Mandatory=$true)]
+        [String]
+        $CertificateOutputPath
     )
 
     #region Validate Input
@@ -422,58 +466,156 @@ function Install-SQLServer {
     }
 
     # Create File Share Group
+    try {
+        if ($GenerateFileShareGroup)
+        {
+            Write-Verbose ('Creating AD Group for File Share...')
+            $result = $null
+            $result = New-ADGroup -Name $FileShareGroup -SamAccountName $FileShareGroup -GroupCategory Security -GroupScope DomainLocal -Path $FileShareGroupOUPath -Credential $DomainAdminCreds
+            Write-Verbose ('AD Group "{0}" created at "{1}"' -f $FileShareGroup, $FileShareGroupOUPath)
+            Start-Sleep 5
+        } else {
+            Write-Verbose ('Using Existing File Share Group "{0}"' -f $FileShareGroup)
+        }
+
+        ##Add SQL Admins Group, SvcAccount and SysAdmin Groups to File Share Group
+        $Result = Get-ADGroup $FileShareGroup | Add-ADGroupMember -Members $SQLADminsGroup,$svcAccount,$SysAdminGroup -Credential $DomainAdminCreds
+        Write-Verbose ('Added "{0}" to "{1}"' -f ($SQLADminsGroup + ',' + $svcAccount + ',' + $SysAdminGroup),$FileShareGroup)
+    }
+    catch {
+        throw ('A problem occured creating the File Share AD Group: {0}' -f $error[0])
+    }
 
     # Grant remote access permissions
+    try {
+        Write-verbose ('Configuring Remote Access permissions...')
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Event Log Readers' -AccountObject $SysAdminGroup -Credential $DomainAdminCreds
+        Write-verbose ('Added Group {0} to local Group "Event Log Readers"' -f $SysAdmingroup)
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Performance Monitor Users' -AccountObject $SysAdminGroup -Credential $DomainAdminCreds
+        Write-verbose ('Added Group {0} to local Group "Performance Monitor Users"' -f $SysAdminGroup)
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Distributed COM Users' -AccountObject $SysAdminGroup -Credential $DomainAdminCreds
+        Write-verbose ('Added Group {0} to local Group "Distributed COM Users"' -f $SysAdminGroup)
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Remote Management Users' -AccountObject $svcAccount -AccountObjectIsUser -Credential $DomainAdminCreds
+        Write-verbose ('Added User {0} to local Group "Remote Management Users"' -f $svcAccount)
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'WinRMRemoteWMIUsers__' -AccountObject $SysAdminGroup -ErrorAction SilentlyContinue -Credential $DomainAdminCreds
+        Write-verbose ('Added Group {0} to local Group "WinRMRemoteWMIUsers__"' -f $SysAdminGroup)
+        $result = Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Remote Management Users' -AccountObject $SysAdminGroup -Credential $DomainAdminCreds
+        Write-verbose ('Added Group {0} to local Group "Remote Management Users"' -f $SysAdminGroup)
+    }
+    catch {
+        throw ('A Problem occured Configureing Remote Access: {0}' -f $error[0])
+    }
+    
+    ##Configure Kerberos/SPN's
+    try {
+        Write-verbose ('Starting Kerberos/SPN configuration...')
+        $Result = Get-ADUser $svcAccount | Set-ADUser -TrustedForDelegation $true -Credential $DomainAdminCreds
+        Write-verbose ('Service Account {0} trusted for delegation' -f $svcAccount)
+        $Result = Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}' -f $ServerName)} -Credential $DomainAdminCreds
+        Write-verbose ('Added SPN {0}' -f ('MSSQLSvc/{0}' -f $ServerName))
+        $Result = Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}:1433' -f $ServerName)} -Credential $DomainAdminCreds
+        Write-verbose ('Added SPN {0}' -f ('MSSQLSvc/{0}:1433' -f $ServerName))
+        $Result = Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}.{1}' -f $ServerName,$dnsdomain)} -Credential $DomainAdminCreds
+        Write-verbose ('added SPN {0}' -f ('MSSQLSvc/{0}.{1}' -f $ServerName,$dnsdomain))
+        $Result = Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}.{1}:1433' -f $ServerName,$dnsdomain)} -Credential $DomainAdminCreds
+        Write-verbose ('added SPN {0}' -f ('MSSQLSvc/{0}.{1}:1433' -f $ServerName,$dnsdomain))
 
-    # Configure Kerberos/SPN's
+        ##Make sure the computer is trusted for delegation
+        $Result = Get-ADComputer $ServerName | Set-ADComputer -TrustedForDelegation $true -Credential $DomainAdminCreds
+        Write-verbose ('Computer account configured to be trusted for delegation')
+    }
+    Catch {
+        throw ('Error configuring kerberos/SPNs: {0}' -f $error[0])
+    }
+    
+    ##Generate SSL Certificate for SQL Server
+    try {
+        ##Check for Create-Certificate Function
+        Write-verbose ('Checking for Create-Certificate Function...')
+        if (!(get-command -name Create-Certificate))
+        {
+            throw ('Create-Certificate Function missing')
+        }
+        Write-verbose ('Create-Certificate Function present')
 
-    # Create Certificate
+        Create-Certificate -Name $servername -CertificateTemplateName $CertificateTemplate -Locality $CertificateLocality -Organization $CertificateOrganization -OutPutPath $CertificateOutputPath | Out-Null
+        Write-Verbose ('Certificate created at {0}' -f $CertificateOutputPath)
+        Copy-Item $CertificateOutputPath \\$ServerName\e$\Scripts\ | Out-Null
+        Write-Verbose ('Copied Certificate to \\{0}\e$\Scripts\' -f $servername)
+
+        ##Fix ACL on Server to allow service account access
+        $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule ('{1}\{0}' -f $svcAccount,$dnsdomain.split('.')[0]), 'Read', 'ContainerInherit, ObjectInherit', 'None','Allow'
+        $ACL = Get-Acl \\$serverName\e$\Scripts
+        $acl.AddAccessRule($AccessRule) | Out-Null
+        $acl | set-acl \\$servername\e$\Scripts | Out-Null
+        Write-verbose ('Added Service Account {0} to have access to {1}' -f $svcAccount,("$ServerName\e$\Scripts"))
+    }
+    Catch {
+        throw ('Problem Creating Certificate for SQL Server: {0}' -f $error[0])
+    }
 
     # Generate Install Script
+    try {
+        ##Verify SQL Key is there
+        If (!$SQLInstallKey) {throw 'SQL Install Key not provided.'}
+        Write-verbose ('Validated SQL server key is not empty.')
+        ##Verify SQL ISO Path
+        if (-Not (Test-Path -Path $SQLISOPath)) { throw ('Unable to get to path {0}' -f $SQLISOPath)}
+        if (-Not ($SQLISOPath -like ('*{0}*' -f $SQLServerVersion))) { throw ('ISO File does not match target version')}
+        Write-verbose ('Validated SQL Server ISO File path.')
+        ##Generate PowerShell Install Script
+        $Script = ('##Mount ISO Image from Provided Path' + [environment]::newline) 
+        $Script += ('Mount-DiskImage -ImagePath "{0}"' -f $SQLISOPath) + [environment]::newline
+        $Script += ('##Change working directory to mounted ISO image' + [environment]::newline)
+        $Script += ('Set-Location ((Get-Volume | ?{$_.FileSystem -eq "CDFS"} | select -first 1).DriveLetter + ":")') + [environment]::newline
+        $Script += ('##Set environment variables for User/Group/Password' + [environment]::newline) 
+        $Script += ('$User = "{0}"' -f $svcAccount) + [environment]::newline
+        $Script += ('$Group = "{0}"' -f $SysAdminGroup) + [environment]::newline
+        $Script += ('$PW = '+"'{0}'" -f $Password) + [environment]::newline
+        $Script += ('##Execute Install of Software with options' + [environment]::newline) 
+        $Script += ('.\setup.exe /Quiet="True" /PID="{0}" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /Features=SQLEngine,Replication,FullText,Conn /X86="False" /InstanceName="MSSQLSERVER" /InstanceID="MSSQLSERVER" /InstanceDir="e:\\" /AgtSvcAccount="ESB\$User" /SQLSVCAccount="ESB\$User" /SQLSYSADMINACCOUNTS="$Group" /InstallSQLDataDir="E:" /SQLBackupDir="E:\Backups" /SQLUSERDBDIR="E:\SQLData1" /SQLUSERDBLOGDIR="E:\SQLLogs1" /SQLTEMPDBDIR="E:\TDBData1" /SQLTEMPDBLOGDIR="E:\TDBLogs1" /SQLSVCPassword="$pw" /AGTSVCPASSWORD="$pw" /TCPEnabled=1' -f $SQLKey) + [environment]::newline
+        if ($InstallMgmtStudio -and $SQLVersion -ne '2016')
+        {
+            ##Install SSMS from ISO matching SQL Instance
+            $Script += ('.\setup.exe /Quiet="True" /PID="{0}" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /Features=SSMS,ADV_SSMS /X86="False"' -f $SQLKey)
+        }
+        if ($InstallMgmtStudio -and $SQLVersion -eq '2016')
+        {
+            ##Download and install SSMS
+            $Script += ('Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2014306 -OutFile E:\Software\SSMS.exe')
+            $Script += ('E:\Software\SSMS.exe /quiet')
+        }
+        $Script += ($ServicePackPath + '/Action=Patch /IACCEPTSQLSERVERLICENSETERMS /QUIET /ALLINSTANCES /INDICATEPROGRESS')
+        #$Script += $ServicePack
+
+        ##Wrtie file to DB Server Scripts folder
+        Set-Content -Value $Script -Path ('\\{0}\E$\\Scripts\SQLInstall.ps1' -f $ServerName)
+        Write-Verbose ('Execution Script written to "{0}"' -f ("\\$Servername\e$\Scripts\SQLInstall.ps1"))
+    }
+    Catch {
+        throw ('Problem Generating SQL Server Install Script: {0}' -f $Error[0])
+    }
 
     # Install SQL
+    try {
+        ##Verify WSMan required values
+        Connect-WSMan -ComputerName $ServerName -Credential $DomainAdminCreds | Out-Null   
+        if ((Get-Item WSMan:\$ServerName\Shell\MaxMemoryPerShellMB).Value -lt 750) { throw 'MaxMemoryPerShellMB is below 750 MB, this needs to be adjusted to 750 or higher to allow the install process!'}
+        Write-verbose ('MaxMemoryPerShellMB is at or above the min suggested of 750MB.')
+        
+        ##Define Script to call on remote server and create powershell remoting session
+        $session = New-PSSession -ComputerName $ServerName -Credential $DomainAdminCreds
 
-    #endregion
-
-    #region Configure SQL Server
-    # Install SSL Certificate
-
-    # limit AD Service account rights
-
-    # Remove SQL Powershell signed scripts restriction
-
-    # Configure Services for auto start
-
-    # Configure TCP and Named Pipes
-
-    # Configure Service Delegation
-
-    # Configure windows share and file permissions
-
-    # Configure File Type Restrictions (FSRM)
-
-    # Configure PowerShell Profile for SQL Permissions
-
-    # Configure DFS Share
-
-    # Restart Server
-
-    # Set Max Memory usage
-
-    # Enable Backup Compression
-
-    # Configure DB Mail
-
-    # Increase Job history
-
-    # Update Database Settings (Size and Recovery type)
-
-    # Create db_exec role on model db
-
-    #endregion
-
-    #region Configure DB Maintenance Jobs in SQL Agent
-
+        $Script = {
+            Get-content E:\Scripts\SQLInstall.ps1 | Invoke-Expression
+        }
+        
+        ##Execute Script file on Server via PowerShell Remoting
+        $result = Invoke-Command -Session $session -ScriptBlock $Script
+    }
+    catch {
+        throw ('A problem occured instaling SQL: {0}' -f $error[0])
+    }
     #endregion
 
 }
