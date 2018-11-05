@@ -88,51 +88,71 @@ function Create-Certificate
     param(
         [Parameter(Mandatory=$True)]
         [Alias('Server','ServerName')]
-        [string]$Name,
+        [string]
+        $Name,
 
         [Alias('DomainName')]
-        [string]$Domain = ($env:USERDNSDOMAIN),
+        [string]
+        $Domain = ($env:USERDNSDOMAIN),
         
-        [String]$CommonName = ($Name + '.' + $Domain),
+        [String]
+        $CommonName = ($Name + '.' + $Domain),
         
         [Alias('IPAddress','IP Address')]
-        [String]$IP = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
+        [String]
+        $IP = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
         
         [Alias('SANs','SAN')]
-        [String[]]$SubjectAlternativeNames = $null,
+        [String[]]
+        $SubjectAlternativeNames = $null,
         
-        [String]$CertificateAuthorityServer = ((certutil -ADCA | select-string dnshostname | select -first 1).tostring().split('=')[1]).Trim(),
+        [String]
+        $CertificateAuthorityServer = ((certutil -ADCA | select-string dnshostname | select -first 1).tostring().split('=')[1]).Trim(),
         
-        [String]$CertificateAuthorityName = ((certutil -ADCA | select-string displayName | select -first 1).tostring().split('=')[1]).Trim(),
+        [String]
+        $CertificateAuthorityName = ((certutil -ADCA | select-string displayName | select -first 1).tostring().split('=')[1]).Trim(),
         
         [Parameter(Mandatory=$True)]
-        [String]$CertificateTemplateName = "",
+        [String]
+        $CertificateTemplateName = "",
         
-        [String]$CertificatePassword = 'testpassword',
+        [String]
+        $CertificatePassword = 'testpassword',
         
-        [String]$CertificateChainPath = $null,
+        [String]
+        $CertificateChainPath = $null,
         
-        [String]$Country = 'US',
+        [String]
+        $Country = 'US',
         
-        [String]$State = 'IL',
+        [String]
+        $State = 'IL',
 
         [Parameter(Mandatory=$True)]
-        [String]$Locality = "",
+        [String]
+        $Locality = "",
 
         [Parameter(Mandatory=$True)]
-        [String]$Organization = "",
+        [String]
+        $Organization = "",
 
-        [String]$OrganizationalUnit = 'N/A',
+        [String]
+        $OrganizationalUnit = 'N/A',
 
-        [String]$OpenSSLPath = (Get-command openssl*).Source,
+        [String]
+        $OpenSSLPath = (Get-command openssl*).Source,
 
-        [String]$OutputPath = "$((get-location).path)\$Name.$Domain",
+        [String]
+        $OutputPath = "$((get-location).path)\$Name.$Domain",
 
-        [switch]$OverWrite = $false,
+        [switch]
+        $OverWrite = $false,
 
-        [switch]$Regenerate = $false,
+        [switch]
+        $Regenerate = $false,
 
-        [switch]$UseDefaultSANs = $true
+        [switch]
+        $UseDefaultSANs = $true
     )
 
     ## Generate the Fully Qualified Domain Name
