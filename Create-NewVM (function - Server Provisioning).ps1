@@ -53,36 +53,36 @@
         [Parameter(Mandatory=$true)]
         [ValidateLength(1,15)]
         [String]
-        $ServerName,    
-                
-        [Parameter(Mandatory=$true)]
+        $ServerName,
+
+        [Parameter(Mandatory=$false)]
         [ValidateSet('Prod','Dev','Test')]
         [String]
         $ServerEnv = 'Prod',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [ValidateSet('WB','DB','AP','DC')]
         [String]
         $ServerType = 'AP',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [ValidateSet('Linux','Windows')]
         [String]
         $ServerOS = 'Windows',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $TemplateName = '*2016',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $TemplateLocation = 'Templates',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $vmLocation = 'POC - Testing',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $TargetDatastoreName = '*VVOL*',
 
@@ -90,7 +90,7 @@
         [switch]
         $TargetDatastoreIsCluster = $false,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $TargetClusterName = 'Servers',
 
@@ -102,15 +102,15 @@
         [String]
         $ServerIP,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $ServerSubnet = '255.255.255.0',
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
 
@@ -118,15 +118,15 @@
         [String]
         $OUPath,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS),
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String[]]
         $DNSServers = (((Get-DnsClientServerAddress | select -first 1).serveraddresses)),
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [String]
         $DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name)
 
@@ -139,29 +139,56 @@
     ## Script Input Validation
     #############################################################################################################################################
     
+    <#
+    $vCenterServer = ''
+    $vCenterCreds = Get-Credential 
+    $LocalAdminCreds = Get-Credential 
+    $DomainAdminCreds = $vCenterCreds
+    $ServerName = 'testing5'
+    $ServerEnv = 'Prod'
+    $ServerType = 'AP'
+    $ServerOS = 'Windows'
+    $TemplateName = '*2016'
+    $TemplateLocation = 'Templates'
+    $vmLocation = 'POC - Testing'
+    $TargetDatastoreName = '*VVOL*'
+    $TargetDatastoreIsCluster = $false
+    $TargetClusterName = 'Servers'
+    $TargetClusterIsHost = $false
+    $ServerIP = ''
+    $ServerSubnet = '255.255.255.0'
+    $ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
+    $ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
+    $OUPath = 'OU=Prod,OU=non-pci,ou=Servers,DC=esb,DC=com'
+    $CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS)
+    $DNSServers = (((Get-DnsClientServerAddress | select-object -first 1).serveraddresses))
+    $DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name)
+    #>
+
     ##Output Values
     $variables = Get-Variable vCenterServer,vCenterCreds,DomainAdminCreds,LocalAdminCreds,ServerName,ServerEnv,ServerType,ServerOS,TemplateName,TemplateLocation,VMLocation,TargetDataStoreName,TargetDatastoreIsCluster,TargetClusterName,TargetClusterIsHost,ServerIP,ServerSubnet,ServerGW,ServerNetworkName,OUPath,CustomOSSpecName
-    $variables | %{ Write-Verbose ($_ | select name,value)}
+    $variables | ForEach-Object{ Write-Verbose ($_ | select name,value)}
     
     ##Validate needed tools
     try
     {
         Write-Verbose ('Checking if required Modules are installed...')
-        if (!(Get-Module -Name ActiveDirectory -ListAvailable)) { throw ('Unable to find ActiveDirectory Module - RSAT PowerShell Modules Required!') }
-        if (!(Get-Module -Name VMware.PowerCLI -ListAvailable)) { throw ('Unable to find VMware PowerCLI Module - This module is required!') }
+        if (!(Get-Module -Name ActiveDirectory -ListAvailable -Verbose:$false)) { throw ('Unable to find ActiveDirectory Module - RSAT PowerShell Modules Required!') }
+        if (!(Get-Module -Name VMware.PowerCLI -ListAvailable -Verbose:$false)) { throw ('Unable to find VMware PowerCLI Module - This module is required!') }
         Write-Verbose ('Found Required Modules. Checking if Modules are loaded...')
-        if (!(Get-Module -Name ActiveDirectory))
+        if (!(Get-Module -Name ActiveDirectory -Verbose:$false))
         {
             Write-Verbose ('Active Directory Module not loaded.  Loading Module...')
             Import-Module ActiveDirectory -Verbose:$false | Out-Null
             Write-Verbose ('Active Directory Module Loaded')
         }
-        if (!(Get-Module -Name VMware.PowerCLI))
+        if (!(Get-Module -Name VMware.PowerCLI -Verbose:$false))
         {
             Write-Verbose ('VMware.PowerCLI Module not loaded.  Loading Module...')
-            Import-Module VMware.PowerCLI -Verbose:$false | Out-Null
+            $result = Import-Module VMware.PowerCLI -Verbose:$false | Out-Null
             Write-Verbose ('VMware.PowerCLIy Module Loaded')
         }
+        Write-Verbose ('All Modules loaded.')
     }
     Catch
     {
@@ -176,7 +203,7 @@
         if ($global:DefaultVIServer.IsConnected -and $Global:DefaultVIServer.Name -ne $vCenterServer)
         {
             Write-Verbose ('Found other vCenter Servers connected.  These will be disconnected...')
-            Disconnect-VIServer -Server $global:defaultviservers -ErrorAction SilentlyContinue -Confirm:$false -Force
+            Disconnect-VIServer -Server $global:defaultviservers -ErrorAction SilentlyContinue -Confirm:$false -Force | Out-Null
             Write-Verbose ('All vCenter Connections removed')
         }
 
@@ -248,7 +275,7 @@
     try
     {
         Write-Verbose ('Checking for Template requirements...')
-        $Template = Get-Template -Location $TemplateLocation -Name $TemplateName
+        $Template = Get-Template -Location $TemplateLocation -Name $TemplateName -Verbose:$false
         if (!$Template)
         {
             throw ('No Template found matching {0}' -f $TemplateName)
@@ -269,7 +296,7 @@
     try
     {
         Write-Verbose ('Checking location to create VM...')
-        If (!(Get-Folder $vmLocation)) { throw 'VM Location folder not found' }
+        If (!(Get-Folder $vmLocation -Verbose:$false)) { throw 'VM Location folder not found' }
         Write-Verbose ('Verified Folder "{0}" for VM Placement' -f $vmLocation)
         
     }
@@ -284,12 +311,12 @@
         if ($TargetDatastoreIsCluster)
         {
             Write-Verbose ('Checking for Cluster Datastores...')
-            $TargetDatastore = Get-DatastoreCluster $TargetDatastoreName
+            $TargetDatastore = Get-DatastoreCluster $TargetDatastoreName -Verbose:$false
         }
         Else
         {
             Write-Verbose ('Checking for Non-Cluster Datastores...')
-            $TargetDatastore = Get-Datastore $TargetDatastoreName
+            $TargetDatastore = Get-Datastore $TargetDatastoreName -Verbose:$false
         }
         if (!$TargetDatastore)
         {
@@ -312,12 +339,12 @@
         if ($TargetClusterIsHost)
         {
             Write-Verbose ('Checking Target Host to create VM on...')
-            $TargetCluster = Get-Host $TargetClusterName
+            $TargetCluster = Get-VMHost $TargetClusterName -Verbose:$false
         }
         Else
         {
             Write-Verbose ('Checking Target Cluster to Create VM on...')
-            $TargetCluster = Get-Cluster $TargetClusterName
+            $TargetCluster = Get-Cluster $TargetClusterName -Verbose:$false
         }
         if (!$TargetCluster)
         {
@@ -339,7 +366,7 @@
     try
     {
         Write-Verbose ('Checking for VM Customization Spec...')
-        $CustomSpec = Get-OSCustomizationSpec -Name $CustomOSSpecName
+        $CustomSpec = Get-OSCustomizationSpec -Name $CustomOSSpecName -Verbose:$false
         if (!$CustomSpec)
         {
             Throw ('VM Customization Spec ({0}) Not Found' -f $CustomOSSpecName)
@@ -352,17 +379,15 @@
 
         ##Configure CustomOS Spec
         Write-Verbose ('Creating Nic Cusomization Mapping')
+        $customspecNic = $CustomSpec | Get-OSCustomizationNicMapping -Verbose:$false
         if ($ServerOS -like '*linux*')
         {
-            $customspecNic = $CustomSpec | Get-OSCustomizationNicMapping
-            $customspecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $ServerIP -SubnetMask $ServerSubnet -DefaultGateway $ServerGW | Out-Null
+            $customspecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $ServerIP -SubnetMask $ServerSubnet -DefaultGateway $ServerGW -Verbose:$false | Out-Null
             Write-Verbose ('Created Linux Nic Cusomization Mapping')
         }
         if ($ServerOS -like '*Windows*')
         {
-            $customspecNic = $CustomSpec | Get-OSCustomizationNicMapping
-            $customspecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $ServerIP -SubnetMask $ServerSubnet -DefaultGateway $ServerGW -Dns $DNSServers | Out-Null
-            Write-Verbose ('Created Windows Nic Cusomization Mapping')
+            $customspecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $ServerIP -SubnetMask $ServerSubnet -DefaultGateway $ServerGW -Dns $DNSServers -verbose:$false | out-null
         }
     }
     Catch
@@ -374,7 +399,7 @@
     try
     {
         Write-Verbose ('Checking VM for Network...')
-        $ServerNetwork = (Get-VirtualPortGroup -Name "$ServerNetworkName")
+        $ServerNetwork = (Get-VirtualPortGroup -Name $ServerNetworkName -verbose:$false)
         if (!$ServerNetwork)
         {
             Throw ('Server Network {0} Not Found!' -f $ServerNetworkName)
@@ -400,18 +425,6 @@
             throw ('Invalid OU path "{0}" for Servers' -f $OUPath)
         }
         Write-Verbose ('OU Path: "{0}" for Servers is valid' -f $OUPath)
-
-        if (!(Test-Path ('AD:\{0}' -f $ServerGroupsOU)))
-        {
-            throw ('Invalid OU path "{0}" for Server Groups' -f $ServerGroupsOU)
-        }
-        Write-Verbose ('OU Path: "{0}" for Server Groups is valid' -f $ServerGroupsOU)
-
-        if (!(Test-Path ('AD:\{0}' -f $ServiceAccountOU)))
-        {
-            throw ('Invalid OU path "{0}" for Service Accounts' -f $ServiceAccountOU)
-        }
-        Write-Verbose ('OU Path: "{0}" for Service Accounts is valid' -f $ServiceAccountOU)
     }
     Catch
     {
@@ -431,7 +444,7 @@
     try
     {
         Write-Verbose ('Starting VM Creation Process..')
-        $VM = New-VM -Name $ServerName -Template $Template -ResourcePool $TargetCluster.Name -Datastore $TargetDataStore.Name -OSCustomizationSpec $CustomSpec -Location "$vmLocation" -DiskStorageFormat Thin -Verbose:$false
+        $VM = New-VM -Name $ServerName -Template $Template -ResourcePool $TargetCluster.Name -Datastore $TargetDataStore.Name -OSCustomizationSpec $CustomSpec -Location "$vmLocation" -DiskStorageFormat Thin 
         Write-Verbose ('VM Created and ready to power on')
 
         Write-Verbose ('Assigning Port Group Name to Network Adapter')
@@ -441,7 +454,7 @@
         Write-Verbose ('Starting VM...')
         $VM | Start-VM -Verbose:$false| Out-Null
 
-        While (!(Get-VIEvent -Entity $vm -verbose:$false| ?{$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'}))
+        While (!(Get-VIEvent -Entity $vm -verbose:$false| Where-Object{$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'}))
         {
             Write-Verbose ('Waiting for VM {0} to customize!' -f $vm.name)
             Start-Sleep 30
@@ -580,18 +593,21 @@
             Write-Verbose ('Succesfully Joined domain, waiting for reboot...')
 
             ##Wait/Test for machine to be available
-            $status = (Test-Ping -Server $servername -Count 1 -ErrorAction SilentlyContinue)
-            While (($status.status -ne 'Success') -and ($status)) 
+            $resolve = Test-Resolve -ComputerName $ServerName -ErrorAction SilentlyContinue
+            $status = $null
+            While (($status.status -ne 'Success') -and -Not($resolve)) 
             {
                 Start-Sleep 15
                 Write-Verbose ('Waiting for VM {0} Reboot..' -f $vm.Name)
                 Clear-DnsClientCache
+
+                $Resolve = Test-Resolve -ComputerName $ServerName -ErrorAction SilentlyContinue
         
-                if(([net.dns]::Resolve($servername)))
+                if($Resolve)
                 {
                     Write-Verbose ('Server Name resolves with DNS, clearing Cache!')
                     Clear-DnsClientCache
-                    $status = (Test-Ping -Server $servername -Count 1 -ErrorAction SilentlyContinue)
+                    $status = (Test-Ping -Server $ServerIP -Count 1 -ErrorAction SilentlyContinue)
                 }
             }
 
@@ -647,24 +663,24 @@
             $result = $null
             Write-Verbose ('Configuring Disk as E:\ on Server...')
             $Script = {
-                $Disk = Get-Disk | Where {$_.PartitionStyle -eq 'RAW'}
+                $Disk = Get-Disk | Where-Object {$_.PartitionStyle -eq 'RAW'}
                 $Disk | Initialize-Disk
                 $result = $null
                 $result = $Disk | New-Partition -UseMaximumSize -DriveLetter E | Format-Volume -Confirm:$false
                 if ($result.DriveLetter -ne 'E') { throw ('Error creating partition and Drive Letter') }
 
                 $acl = get-acl E:\
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'creator owner'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | ?{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
+                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'creator owner'})) | Out-Null
+                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
+                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
+                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
                 $result = $null
                 $result = $acl | Set-Acl E:\
-                if (!$result) { throw ('Error applying permissions to E:\') }
+                if (!$result) { write-error ('Error applying permissions to E:\') }
 
                 New-Item E:\Scripts, E:\Software -ItemType container | Out-Null
             }
-            $result = Invoke-Command -ComputerName $ServerName -ScriptBlock $script -Credential $DomainAdminCreds
+            Invoke-Command -ComputerName $ServerName -ScriptBlock $script -Credential $DomainAdminCreds -ErrorAction Continue
             if ($result.scriptOutput -like '*Error*') { throw ('Error occured configuring E:\ Drive!') }
             Write-Verbose ('Disk Configured Successfully at E:\ on {0}' -f $ServerName)
 
