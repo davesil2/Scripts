@@ -1,115 +1,134 @@
 ﻿Function Create-NewVM
 {
+    <#
+    .SYNOPSIS
+    This fucntion provides a quick consistent way to create new VM's
+    .DESCRIPTION
+    This function follows specific standard steps to create a new VM
+
+        Create VM
+        Join AD Domain
+        Windows
+            Join Active Directory
+            Configure Administrators AD group
+            Add Secondary Disk for data
+            Configure SSL Cert for WSMAN
+            Configure Kerberos
+            Rename Network Adapter to match VMware Network
+        Linux
+            configure SSH AD Group
+            Configure Sudoers AD Group
+            Joing Active Directory
+            DNS Registration
+    
+    .EXAMPLE
+    Use the following commands:
+
+        $Creds = Get-Credential
+        $AdminCred = Get-Credential
+
+        Create-NewVM -ServerName MyTestServer -vCenterServer vcenter.domain.com -vCenterCreds $creds -ServerIP 192.168.0.20 -OUPath 'OU=Computers,DC=Domain,DC=com' -LocalAdminCreds $adminCred
+
+        **Note: the vCenter Credientials are assumed to have domain Admin rights
+    This basic example creates a VM on vCenter.  The default values provided based on lookup info.
+    #>
+    
     Param(
         [Parameter(Mandatory=$true)]
-        [String]$vCenterServer,
+        [String]
+        $vCenterServer,
 
         [Parameter(Mandatory=$true)]
-        [System.Management.Automation.PSCredential]$vCenterCreds,
+        [System.Management.Automation.PSCredential]
+        $vCenterCreds,
 
         [Parameter(Mandatory=$true)]
-        [System.Management.Automation.PSCredential]$LocalAdminCreds,
+        [System.Management.Automation.PSCredential]
+        $LocalAdminCreds,
 
         [Parameter(Mandatory=$false)]
-        [System.Management.Automation.PSCredential]$DomainJoinCreds = $vCenterCreds,
+        [System.Management.Automation.PSCredential]
+        $DomainAdminCreds = $vCenterCreds,
 
         [Parameter(Mandatory=$true)]
         [ValidateLength(1,15)]
-        [String]$ServerName,    
+        [String]
+        $ServerName,    
                 
         [Parameter(Mandatory=$true)]
         [ValidateSet('Prod','Dev','Test')]
-        [String]$ServerEnv = 'Prod',
+        [String]
+        $ServerEnv = 'Prod',
 
         [Parameter(Mandatory=$true)]
         [ValidateSet('WB','DB','AP','DC')]
-        [String]$ServerType = 'AP',
+        [String]
+        $ServerType = 'AP',
 
         [Parameter(Mandatory=$true)]
         [ValidateSet('Linux','Windows')]
-        [String]$ServerOS = 'Windows',
+        [String]
+        $ServerOS = 'Windows',
 
         [Parameter(Mandatory=$true)]
-        [String]$TemplateName = '*2016',
+        [String]
+        $TemplateName = '*2016',
 
         [Parameter(Mandatory=$true)]
-        [String]$TemplateLocation = 'Templates',
+        [String]
+        $TemplateLocation = 'Templates',
 
         [Parameter(Mandatory=$true)]
-        [String]$vmLocation = 'POC - Testing',
+        [String]
+        $vmLocation = 'POC - Testing',
 
         [Parameter(Mandatory=$true)]
-        [String]$TargetDatastoreName = '*VVOL*',
-
-        [Parameter(Mandastory=$false)]
-        [switch]$TargetDatastoreIsCluster = $false,
-
-        [Parameter(Mandatory=$true)]
-        [String]$TargetClusterName = 'Servers',
+        [String]
+        $TargetDatastoreName = '*VVOL*',
 
         [Parameter(Mandatory=$false)]
-        [Switch]$TargetClusterIsHost = $false,
+        [switch]
+        $TargetDatastoreIsCluster = $false,
 
         [Parameter(Mandatory=$true)]
-        [String]$ServerIP,
+        [String]
+        $TargetClusterName = 'Servers',
+
+        [Parameter(Mandatory = $false)]
+        [Switch]
+        $TargetClusterIsHost = $false,
 
         [Parameter(Mandatory=$true)]
-        [String]$ServerSubnet = '255.255.255.0',
+        [String]
+        $ServerIP,
 
         [Parameter(Mandatory=$true)]
-        [String]$ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
-
-        [Paramater(Mandatory=$true)]
-        [String]$ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
-
-        [Parameter(Mandtory=$true)]
-        [String]$OUPath,
+        [String]
+        $ServerSubnet = '255.255.255.0',
 
         [Parameter(Mandatory=$true)]
-        [String]$CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS),
-
-        [Parameter(Mandatory=$false)]
-        [ValidateSet('2016','2014','2012')]
-        [String]$SQLServerVersion = '2016',
+        [String]
+        $ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
 
         [Parameter(Mandatory=$true)]
-        [String[]]$DNSServers = (((Get-DnsClientServerAddress | select -first 1).serveraddresses)),
+        [String]
+        $ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.'))),
 
         [Parameter(Mandatory=$true)]
-        [String]$DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name),
-
-        [Parameter(Mandatory=$false)]
-        [String]$ServerAdmins = ('{0} Admins' -f $ServerOS),
+        [String]
+        $OUPath,
 
         [Parameter(Mandatory=$true)]
-        [String]$ServerGroupsOU,
+        [String]
+        $CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS),
 
         [Parameter(Mandatory=$true)]
-        [String]$ServiceAccountOU,
+        [String[]]
+        $DNSServers = (((Get-DnsClientServerAddress | select -first 1).serveraddresses)),
 
-        [Parameter(Mandatory=$false)]
-        [String]$SQLGroupsOU,
-
-        [Parameter(Mandatory=$false)]
-        [String]$SQLAdminsGroup = 'SQL Admins',
-
-        [Parameter(Mandatory=$false)]
-        [String]$CertificateOutputPath,
-
-        [Parameter(Mandatory=$false)]
-        [String]$CertificateOrganization,
-
-        [Parameter(Mandatory=$false)]
-        [String]$CertificateTemplate,
-
-        [Parameter(Mandatory=$false)]
-        [String]$CertificateLocality,
-
-        [Parameter(Mandatory=$false)]
-        [String]$SQLISOPath,
-
-        [Parameter(Mandatory=$false)]
-        [String]$SQLInstallKey
+        [Parameter(Mandatory=$true)]
+        [String]
+        $DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name)
 
     )
 
@@ -121,7 +140,7 @@
     #############################################################################################################################################
     
     ##Output Values
-    $variables = Get-Variable vCenterServer,vCenterCreds,DomainJoinCreds,LocalAdminCreds,ServerName,ServerEnv,ServerType,ServerOS,TemplateName,TemplateLocation,VMLocation,TargetDataStoreName,TargetDatastoreIsCluster,TargetClusterName,TargetClusterIsHost,ServerIP,ServerSubnet,ServerGW,ServerNetworkName,OUPath,CustomOSSpecName,SqlServerVersion,DNSServers,DNSDomain,ServerAdmins,ServerGroupsOU,ServiceAccountOU
+    $variables = Get-Variable vCenterServer,vCenterCreds,DomainAdminCreds,LocalAdminCreds,ServerName,ServerEnv,ServerType,ServerOS,TemplateName,TemplateLocation,VMLocation,TargetDataStoreName,TargetDatastoreIsCluster,TargetClusterName,TargetClusterIsHost,ServerIP,ServerSubnet,ServerGW,ServerNetworkName,OUPath,CustomOSSpecName
     $variables | %{ Write-Verbose ($_ | select name,value)}
     
     ##Validate needed tools
@@ -555,7 +574,7 @@
             ##Join Machine to AD domain
             $result = $null
             Write-Verbose ('Configuring machine to join to domain...')
-            $Script = '$Password = convertto-securestring "'+ $DomainJoinCreds.GetNetworkCredential().Password+'" -force -asplaintext;$user = "' + $vCenterCreds.UserName + '";$cred = new-object system.management.automation.pscredential $user, $password; add-computer -domainname '+ $dnsdomain +' -oupath "' + $OUPath + '" -Credential $cred -restart'
+            $Script = '$Password = convertto-securestring "'+ $DomainAdminCreds.GetNetworkCredential().Password+'" -force -asplaintext;$user = "' + $vCenterCreds.UserName + '";$cred = new-object system.management.automation.pscredential $user, $password; add-computer -domainname '+ $dnsdomain +' -oupath "' + $OUPath + '" -Credential $cred -restart'
             $result = Invoke-VMScript -ScriptText $Script -VM $vm -GuestCredential $LocalAdminCreds -ErrorAction SilentlyContinue -Verbose:$false
             if ($result.ScriptOutput -notlike '') { throw ('') }
             Write-Verbose ('Succesfully Joined domain, waiting for reboot...')
@@ -579,14 +598,14 @@
             ##Configure Kerberos Delegation for Computer Object
             Write-Verbose ('Enabling trusted delegation for computer Account...')
             Start-Sleep 10
-            Get-ADComputer $vm.Name | Set-ADComputer -TrustedForDelegation $True -Credential $DomainJoinCreds
+            Get-ADComputer $vm.Name | Set-ADComputer -TrustedForDelegation $True -Credential $DomainAdminCreds
             Write-Verbose ('Computer {0} is trusted for delegation' -f $ServerName)
 
             ##Force GPUpdate for large kerberos token size issue
             $result = $null
             Write-Verbose ('Forcing Group Policy Update - ensure kerberos max token size is adjusted...')
             $Script = "gpupdate /force;"
-            $Result = Invoke-VMScript -ScriptText $Script -VM $vm -GuestCredential $DomainJoinCreds -ErrorAction SilentlyContinue -ScriptType PowerShell -verbose:$false
+            $Result = Invoke-VMScript -ScriptText $Script -VM $vm -GuestCredential $DomainAdminCreds -ErrorAction SilentlyContinue -ScriptType PowerShell -verbose:$false
             Write-Verbose ('Completed Group Policy Update on {0}' -f $ServerName)
             Write-Verbose ('Restarting WinRM Service to reflect update...')
             (Get-WmiObject Win32_Service -ComputerName $serverName -Filter 'name = "winrm"').StopService() | Out-Null
@@ -614,7 +633,7 @@
         
                 New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $cert.Thumbprint -Force -Confirm:$false
             }
-            $result = Invoke-Command -ComputerName $serverName -ScriptBlock $Script -Credential $DomainJoinCreds -Verbose:$false
+            $result = Invoke-Command -ComputerName $serverName -ScriptBlock $Script -Credential $DomainAdminCreds -Verbose:$false
             if ($Result.ScriptOutput -notlike '') { Write-Warning ('a problem occured configuring WSMAN SSL') } Else { Write-Verbose ('WSMAN SSL Listener configured.') }
 
             ##Add Disk for data
@@ -645,7 +664,7 @@
 
                 New-Item E:\Scripts, E:\Software -ItemType container | Out-Null
             }
-            $result = Invoke-Command -ComputerName $ServerName -ScriptBlock $script -Credential $DomainJoinCreds
+            $result = Invoke-Command -ComputerName $ServerName -ScriptBlock $script -Credential $DomainAdminCreds
             if ($result.scriptOutput -like '*Error*') { throw ('Error occured configuring E:\ Drive!') }
             Write-Verbose ('Disk Configured Successfully at E:\ on {0}' -f $ServerName)
 
@@ -696,245 +715,6 @@
         {
             throw ('Problem with OS configuration on {0}: {0}' -f $VM.Name, $error[0])
         }
-    }
-
-    #endregion
-
-    #region Install SQL Server
-    ##Define SQL Service Account
-    Write-verbose ('Defining Variable for SQL')
-    if ($ServerName -like '*N')
-    {
-        #split up the name and remove the location code 
-        $SQLVirtualName = ($ServerName.Split('-')[1,2] -join '-')
-        #replace tailing 3 char (likely 01N) with 01C for cluster name
-        $SQLVirtualName = $SQLVirtualName.Remove($SQLVirtualName.Length -3) + '01C'
-        #name service account as the cluster rather than node (for kerberos support later)
-        $svcAccount = ('s-{0}' -f $SQLServerVersion)
-    }
-    else {
-        #name service account as the server name prefixed with s-
-        $svcAccount = ('s-{0}' -f $ServerName)
-        #Generate random password (must have function available)
-        if (!$password) {$password = Get-RandomPassword}
-    }
-
-    ##Define Group names with Server name
-    $SysAdmingroup = ('SQL_{0}_SysAdmin' -f $ServerName)
-    $FileShareGroup = ('FS_{0}-DataAccess$_Modify' -f $ServerName)
-    $InstallMgmtStudio = $false
-
-    $InstanceName = 'Default'
-    $SQLVersion = $SQLServerVersion
-    
-    ##Output Values
-    $SQLVariables = Get-Variable svcAccount,SysAdminGroup,FileShareGroup,InstallMgmtStudio,InstanceName,SQLVersion
-    $SQLVariables | %{ Write-Verbose ($_ | select name,value)}
-
-    ##Create AD objects
-    try
-    {
-        Write-Verbose ('Creating AD Service Account...')
-        if (!(Get-ADUser -Filter ('samaccountname -like "*{0}*"' -f $svcAccount)))
-        {
-            $result = $null
-            $result = New-ADUser -Name $svcAccount -SamAccountName $svcAccount -UserPrincipalName ('{0}@{1}' -f $svcAccount,$DNSDomain) -PasswordNeverExpires $true -CannotChangePassword $True -Path $ServiceAccountOU -Credential $DomainJoinCreds
-            Write-verbose ('AD User {0} created at {1}' -f $svcAccount,$ServiceAccountOU)
-            Start-Sleep 5
-            $result = Get-ADUser $svcAccount | Set-ADAccountPassword -NewPassword (ConvertTo-SecureString $password -AsPlainText -Force) -Credential $DomainJoinCreds
-            $result = Get-ADUser $svcAccount | Enable-ADAccount -Credential $DomainJoinCreds
-        }
-        else
-        {
-            Write-Warning ('Service Account {0} already exists!')
-        }
-    }
-    Catch
-    {
-        throw ('Problem creating SQL Service account {0}: {1}' -f $svcAccount,$erro[0])
-    }
-    Write-verbose ('AD Service Account Creation completed.')
-
-    ##Create SQL SysAdmin AD Group
-    try
-    {
-        Write-verbose ('Creating SysAdmin AD Group for SQL Server...')
-        if (!(Get-ADGroup -Filter ('name -like "*{0}*"' -f $SysAdminGroup) -ErrorAction SilentlyContinue))
-        {
-            $result = $null
-            $result = New-ADGroup -Name $SysAdminGroup -SamAccountName $SysAdminGroup -GroupCategory Security -GroupScope DomainLocal -Path $SQLGroupsOU -Credential $DomainJoinCreds
-            Write-verbose ('AD Group {0} created at {1}' -f $SysAdmingroup,$SQLGroupsOU)
-            Start-Sleep -Seconds 5
-        }
-        
-        ##Add SQL Server specific Group to global SQL Admins Group
-        $result = Get-ADGroup $SysAdminGroup | Add-ADGroupMember -Members $SQLAdminsGroup -Credential $DomainJoinCreds
-        Write-verbose ('{0} added to {1} as member of group' -f $SQLAdminsGroup,$SysAdminGroup)
-        
-        ##Get Server local administrators group
-        $LocalAdminAccount = ('Local_{0}_Administrators' -f $ServerName)
-
-        if ((Get-ADGroup -Filter ('samaccountname -like "*{0}*"' -f $LocalAdminAccount) -ErrorAction SilentlyContinue))
-        {
-            Get-ADGroup $LocalAdminAccount | Add-ADGroupMember -Members $SQLAdminsGroup -Credential $DomainJoinCreds
-            Write-verbose ('Adding {0} to ensure local admin access with {1}' -f $SQLAdminsGroup,$LocalAdminAccount)
-        }
-    }
-    Catch
-    {
-        throw ('Problem creating Sysadmin Group {0}: {1}' -f $SysAdminGroup, $error[0])
-    }
-
-    ##Create File Share Group
-    try
-    {
-        Write-verbose ('Creating File Share Group...')
-        if (!(Get-ADGroup -Filter ('name -like "*{0}*"' -f $FileshareGroup) -ErrorAction SilentlyContinue))
-        {
-            $result = $nul
-            $result = New-ADGroup -Name $FileShareGroup -SamAccountName $FileShareGroup -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOU -Credential $DomainJoinCreds
-            Write-verbose ('AD Group {0} created at {1}')
-            Start-Sleep -Seconds 5
-        }
-
-        $result = Get-ADGroup $FileShareGroup | Add-ADGroupMember -Members $SQLAdminsGroup,$svcAccount,$SysAdminGroup -Credential $DomainJoinCreds
-        Write-verbose ('Added {0} - to {1}' -f ("$sqladmingroup,$svcAccount,$SysAdminGroup"),$FileShareGroup)
-    }
-    Catch
-    {
-        throw ('problem creating File Share Group {0}: {1}' -f $FileshareGroup,$error[0])
-    }
-
-    ##Configure Remote Access Premissions
-    try
-    {
-        Write-verbose ('Configuring Remote Access permissions...')
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Event Log Readers' -AccountObject $SysAdminGroup
-        Write-verbose ('Added Group {0} to local Group "Event Log Readers"' -f $SysAdmingroup)
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Performance Monitor Users' -AccountObject $SysAdminGroup
-        Write-verbose ('Added Group {0} to local Group "Performance Monitor Users"' -f $SysAdminGroup)
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Distributed COM Users' -AccountObject $SysAdminGroup
-        Write-verbose ('Added Group {0} to local Group "Distributed COM Users"' -f $SysAdminGroup)
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Remote Management Users' -AccountObject $svcAccount -AccountObjectIsUser
-        Write-verbose ('Added User {0} to local Group "Remote Management Users"' -f $svcAccount)
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'WinRMRemoteWMIUsers__' -AccountObject $SysAdminGroup -ErrorAction SilentlyContinue
-        Write-verbose ('Added Group {0} to local Group "WinRMRemoteWMIUsers__"' -f $SysAdminGroup)
-        Add-LocalGroupMembers -ComputerName $ServerName -LocalGroupName 'Remote Management Users' -AccountObject $SysAdminGroup
-        Write-verbose ('Added Group {0} to local Group "Remote Management Users"' -f $SysAdminGroup)
-    }
-    Catch
-    {
-        throw ('Error configuring Remote Access Permission: {0}' -f $error[0])
-    }
-
-    ##Configure Kerberos/SPN's
-    try
-    {
-        Write-verbose ('Starting Kerberos/SPN configuration...')
-        Get-ADUser $svcAccount | Set-ADUser -TrustedForDelegation $true
-        Write-verbose ('Service Account {0} trusted for delegation' -f $svcAccount)
-        Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}' -f $ServerName)}
-        Write-verbose ('Added SPN {0}' -f ('MSSQLSvc/{0}' -f $ServerName))
-        Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}:1433' -f $ServerName)}
-        Write-verbose ('Added SPN {0}' -f ('MSSQLSvc/{0}:1433' -f $ServerName))
-        Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}.{1}' -f $ServerName,$dnsdomain)}
-        Write-verbose ('added SPN {0}' -f ('MSSQLSvc/{0}.{1}' -f $ServerName,$dnsdomain))
-        Get-ADUser $svcAccount | Set-ADUser -ServicePrincipalNames @{Add=('MSSQLSvc/{0}.{1}:1433' -f $ServerName,$dnsdomain)}
-        Write-verbose ('added SPN {0}' -f ('MSSQLSvc/{0}.{1}:1433' -f $ServerName,$dnsdomain))
-
-        ##Make sure the computer is trusted for delegation
-        Get-ADComputer $ServerName | Set-ADComputer -TrustedForDelegation $true -Credential $DomainJoinCreds
-        Write-verbose ('Computer account configured to be trusted for delegation')
-
-    }
-    Catch
-    {
-        throw ('Error configuring kerberos/SPNs: {0}' -f $error[0])
-    }
-
-    ##Generate SSL Certificate for SQL Server
-    try
-    {
-        ##Check for Create-Certificate Function
-        Write-verbose ('Checking for Create-Certificate Function...')
-        if (!(get-command -name Create-Certificate))
-        {
-            throw ('Create-Certificate Function missing')
-        }
-        Write-verbose ('Create-Certificate Function present')
-
-        Create-Certificate -Name $servername -CertificateTemplateName $CertificateTemplate -Locality $CertificateLocality -Organization $CertificateOrganization -OutPutPath $CertificateOutputPath
-        Write-Verbose ('Certificate created at {0}' -f $CertificateOutputPath)
-        Copy-Item $CertificateOutputPath \\$ServerName\e$\Scripts\
-        Write-Verbose ('Copied Certificate to \\{0}\e$\Scripts\' -f $servername)
-
-        ##Fix ACL on Server to allow service account access
-        $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule ('{1}\{0}' -f $svcAccount,$dnsdomain.split('.')[0]), 'Read', 'ContainerInherit, ObjectInherit', 'None','Allow'
-        $ACL = Get-Acl \\$serverName\e$\Scripts
-        $acl.AddAccessRule($AccessRule)
-        $acl | set-acl \\$servername\e$\Scripts
-        Write-verbose ('Added Service Account {0} to have access to {1}' -f $svcAccount,("$ServerName\e$\Scripts"))
-    }
-    Catch
-    {
-        throw ('Problem Creating Certificate for SQL Server: {0}' -f $error[0])
-    }
-
-    ##Generate Install Script
-    try
-    {
-        ##Verify SQL Key is there
-        If (!$SQLInstallKey) {throw 'SQL Install Key not provided.'}
-        Write-verbose ('Validated SQL server key is not empty.')
-        ##Verify SQL ISO Path
-        if (!(Test-Path -Path $SQLISOPath)) { throw ('Unable to get to path {0}' -f $SQLISOPath)}
-        if (!($SQLISOPath -like ('*{0}*' -f $SQLServerVersion))) { throw ('ISO File does not match target version')}
-        Write-verbose ('Validated SQL Server ISO File path.')
-        ##Generate PowerShell Install Script
-        $Script = ('##Mount ISO Image from Provided Path' + [environment]::newline) 
-        $Script += ('Mount-DiskImage -ImagePath "{0}"' -f $DiskImage) + [environment]::newline
-        $Script += ('##Change working directory to mounted ISO image' + [environment]::newline)
-        $Script += ('Set-Location ((Get-Volume | ?{$_.FileSystem -eq "CDFS"} | select -first 1).DriveLetter + ":")') + [environment]::newline
-        $Script += ('##Set environment variables for User/Group/Password' + [environment]::newline) 
-        $Script += ('$User = "{0}"' -f $svcAccount) + [environment]::newline
-        $Script += ('$Group = "{0}"' -f $SysAdminGroup) + [environment]::newline
-        $Script += ('$PW = '+"'{0}'" -f $Password) + [environment]::newline
-        $Script += ('##Execute Install of Software with options' + [environment]::newline) 
-        $Script += ('.\setup.exe /Quiet="True" /PID="{0}" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /Features=SQLEngine,Replication,FullText,Conn /X86="False" /InstanceName="MSSQLSERVER" /InstanceID="MSSQLSERVER" /InstanceDir="e:\\" /AgtSvcAccount="ESB\$User" /SQLSVCAccount="ESB\$User" /SQLSYSADMINACCOUNTS="$Group" /InstallSQLDataDir="E:" /SQLBackupDir="E:\Backups" /SQLUSERDBDIR="E:\SQLData1" /SQLUSERDBLOGDIR="E:\SQLLogs1" /SQLTEMPDBDIR="E:\TDBData1" /SQLTEMPDBLOGDIR="E:\TDBLogs1" /SQLSVCPassword="$pw" /AGTSVCPASSWORD="$pw" /TCPEnabled=1' -f $SQLKey) + [environment]::newline
-        if ($InstallMgmtStudio -and $SQLVersion -ne '2016')
-        {
-            ##Install SSMS from ISO matching SQL Instance
-            $Script += ('.\setup.exe /Quiet="True" /PID="{0}" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /Features=SSMS,ADV_SSMS /X86="False"' -f $SQLKey)
-        }
-        if ($InstallMgmtStudio -and $SQLVersion -eq '2016')
-        {
-            ##Download and install SSMS
-            $Script += ('Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2014306 -OutFile E:\Software\SSMS.exe')
-            $Script += ('E:\Software\SSMS.exe /quiet')
-        }
-        $Script += $ServicePack
-
-        ##Wrtie file to DB Server Scripts folder
-        Set-Content -Value $Script -Path ('\\{0}\E$\\Scripts\SQLInstall.ps1' -f $ServerName)
-
-        ##Define Script to call on remote server and create powershell remoting session
-        $Script = {
-            Get-content E:\Scripts\SQLInstall.ps1 | Invoke-Expression
-        }
-        $session = New-PSSession -ComputerName $ServerName
-        
-        ##Verify WSMan required values
-        Connect-WSMan -ComputerName $ServerName -Credential $DomainJoinCreds
-        if ((Get-Item WSMan:\pw-cogdb01\Shell\MaxMemoryPerShellMB).Value -lt 750) { throw 'MaxMemoryPerShellMB is below 750 MB, this needs to be adjusted to 750 or higher to allow the install process!'}
-        Write-verbose ('MaxMemoryPerShellMB is at or above the min suggested of 750MB.')
-
-        ##Execute Script file on Server via PowerShell Remoting
-        $result = Invoke-Command -Session $session -ScriptBlock $Script
-
-    }
-    Catch
-    {
-        throw ('Problem Installing SQL Server Software: {0}' -f $Error[0])
     }
 
     #endregion
