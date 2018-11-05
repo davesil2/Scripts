@@ -34,7 +34,7 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$true)]
         [pscredential]
-        $DomainAdminCreds,
+        $DomainAdminCreds = $vCenterCreds,
 
         [Parameter(Mandatory=$False)]
         [String]
@@ -46,7 +46,7 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$false)]
         [Switch]
-        $CreateMountPoints,
+        $CreateMountPoints = $true,
 
         [Parameter(Mandatory=$true)]
         [ValidateSet('2016','2014','2012')]
@@ -115,7 +115,7 @@ function Install-SQLServer {
 
         [Parameter(Mandatory=$false)]
         [Switch]
-        $InstallMgmtStudio,
+        $InstallMgmtStudio = $false,
 
         [Parameter(Mandatory=$true)]
         [String]
@@ -571,7 +571,7 @@ function Install-SQLServer {
         $Script += ('##Set environment variables for User/Group/Password' + [environment]::newline) 
         $Script += ('$User = "{0}"' -f $svcAccount) + [environment]::newline
         $Script += ('$Group = "{0}"' -f $SysAdminGroup) + [environment]::newline
-        $Script += ('$PW = '+"'{0}'" -f $Password) + [environment]::newline
+        $Script += ('$PW = '+"'{0}'" -f $svcAccountPassword) + [environment]::newline
         $Script += ('##Execute Install of Software with options' + [environment]::newline) 
         $Script += ('.\setup.exe /Quiet="True" /PID="{0}" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /Features=SQLEngine,Replication,FullText,Conn /X86="False" /InstanceName="MSSQLSERVER" /InstanceID="MSSQLSERVER" /InstanceDir="e:\\" /AgtSvcAccount="ESB\$User" /SQLSVCAccount="ESB\$User" /SQLSYSADMINACCOUNTS="$Group" /InstallSQLDataDir="E:" /SQLBackupDir="E:\Backups" /SQLUSERDBDIR="E:\SQLData1" /SQLUSERDBLOGDIR="E:\SQLLogs1" /SQLTEMPDBDIR="E:\TDBData1" /SQLTEMPDBLOGDIR="E:\TDBLogs1" /SQLSVCPassword="$pw" /AGTSVCPASSWORD="$pw" /TCPEnabled=1' -f $SQLKey) + [environment]::newline
         if ($InstallMgmtStudio -and $SQLVersion -ne '2016')
