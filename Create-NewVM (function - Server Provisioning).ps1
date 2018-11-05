@@ -116,7 +116,11 @@
 
         [Parameter(Mandatory=$true)]
         [String]
-        $OUPath,
+        $ServerOUPath,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $ServerGroupsOUPath,
 
         [Parameter(Mandatory=$false)]
         [String]
@@ -124,7 +128,7 @@
 
         [Parameter(Mandatory=$false)]
         [String[]]
-        $DNSServers = (((Get-DnsClientServerAddress | select -first 1).serveraddresses)),
+        $DNSServers = (((Get-DnsClientServerAddress | Select-Object -first 1).serveraddresses)),
 
         [Parameter(Mandatory=$false)]
         [String]
@@ -159,7 +163,7 @@
     $ServerSubnet = '255.255.255.0'
     $ServerGW = ('{0}.254' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
     $ServerNetworkName = ('*{0}*' -f $ServerIP.SubString(0,$ServerIP.LastIndexOf('.')))
-    $OUPath = 'OU=Prod,OU=non-pci,ou=Servers,DC=esb,DC=com'
+    $ServerOUPath = 'OU=Prod,OU=non-pci,ou=Servers,DC=esb,DC=com'
     $CustomOSSpecName = ('PowerCLI - {0}' -f $ServerOS)
     $DNSServers = (((Get-DnsClientServerAddress | select-object -first 1).serveraddresses))
     $DNSDomain = ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name)
@@ -167,7 +171,7 @@
 
     ##Output Values
     $variables = Get-Variable vCenterServer,vCenterCreds,DomainAdminCreds,LocalAdminCreds,ServerName,ServerEnv,ServerType,ServerOS,TemplateName,TemplateLocation,VMLocation,TargetDataStoreName,TargetDatastoreIsCluster,TargetClusterName,TargetClusterIsHost,ServerIP,ServerSubnet,ServerGW,ServerNetworkName,OUPath,CustomOSSpecName
-    $variables | ForEach-Object{ Write-Verbose ($_ | select name,value)}
+    $variables | ForEach-Object{ Write-Verbose ($_ | Select-Object name,value)}
     
     ##Validate needed tools
     try
@@ -420,15 +424,15 @@
     {
         $Result = $null
         Write-Verbose ('Check OU Path to make sure it exists...')
-        if (!(Test-Path ('AD:\{0}' -f $OUPath)))
+        if (!(Test-Path ('AD:\{0}' -f $ServerOUPath)))
         {
-            throw ('Invalid OU path "{0}" for Servers' -f $OUPath)
+            throw ('Invalid OU path "{0}" for Servers' -f $ServerOUPath)
         }
-        Write-Verbose ('OU Path: "{0}" for Servers is valid' -f $OUPath)
+        Write-Verbose ('OU Path: "{0}" for Servers is valid' -f $ServerOUPath)
     }
     Catch
     {
-        throw ('Problem Validating OU Path {0}: {1}' -f $OUPath, $error[0])
+        throw ('Problem Validating OU Path {0}: {1}' -f $ServerOUPath, $error[0])
     }
 
     Write-Verbose ('All Validation Steps completed successfully!')
@@ -496,7 +500,7 @@
             ##Join Machine to AD domain
             $result = $null
             Write-Verbose ('Begin domain Join')
-            $script = "domainjoin-cli join --ou '"+$oupath+"' esb.com " + $vCentercreds.GetNetworkCredential().username + ' ' + $vCenterCreds.GetNetworkCredential().Password + '; history -c'
+            $script = "domainjoin-cli join --ou '"+$ServerOUPath+"' esb.com " + $vCentercreds.GetNetworkCredential().username + ' ' + $vCenterCreds.GetNetworkCredential().Password + '; history -c'
             $result = Invoke-VMScript -VM $vm -ScriptText $script -GuestCredential $LocalAdminCreds -ScriptType Bash
 
             if ($result.ScriptOutput -notlike '*successful*')
@@ -511,7 +515,7 @@
             {
                 $result = $null
                 Write-Verbose ('Creating Group for SSH Access to Server...')
-                $result = New-ADGroup -Name $GroupSSH -SamAccountName $GroupSSH -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOU
+                $result = New-ADGroup -Name $GroupSSH -SamAccountName $GroupSSH -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOUPath
                 Start-Sleep 15
                 if (!$result) {throw ('Error Creating AD Group: {0}' -f $error[0])}
                 Write-Verbose ('AD Group {0} Created' -f $GroupSSH)
@@ -523,7 +527,7 @@
                 ##Create AD Group for Sudo rights
                 $result = $null
                 Write-Verbose ('Creating Group for Sudo rights on Server...')
-                $result = New-ADGroup -Name $GroupSudo -SamAccountName $GroupSudo -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOU
+                $result = New-ADGroup -Name $GroupSudo -SamAccountName $GroupSudo -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOUPath
                 Start-Sleep 10
                 if (!$result) { throw ('Error creating AD Group: {0}' -f $error[0]) }
                 Write-Verbose ('AD Group {0} Created' -f $GroupSudo)
@@ -587,7 +591,7 @@
             ##Join Machine to AD domain
             $result = $null
             Write-Verbose ('Configuring machine to join to domain...')
-            $Script = '$Password = convertto-securestring "'+ $DomainAdminCreds.GetNetworkCredential().Password+'" -force -asplaintext;$user = "' + $vCenterCreds.UserName + '";$cred = new-object system.management.automation.pscredential $user, $password; add-computer -domainname '+ $dnsdomain +' -oupath "' + $OUPath + '" -Credential $cred -restart'
+            $Script = '$Password = convertto-securestring "'+ $DomainAdminCreds.GetNetworkCredential().Password+'" -force -asplaintext;$user = "' + $vCenterCreds.UserName + '";$cred = new-object system.management.automation.pscredential $user, $password; add-computer -domainname '+ $dnsdomain +' -oupath "' + $ServerOUPath + '" -Credential $cred -restart'
             $result = Invoke-VMScript -ScriptText $Script -VM $vm -GuestCredential $LocalAdminCreds -ErrorAction SilentlyContinue -Verbose:$false
             if ($result.ScriptOutput -notlike '') { throw ('') }
             Write-Verbose ('Succesfully Joined domain, waiting for reboot...')
@@ -645,7 +649,7 @@
             $Script = {
                 $ServerName = $env:COMPUTERNAME
                 $Domain = $env:USERDNSDOMAIN
-                $Cert = Get-ChildItem Cert:\LocalMachine\My | ?{$_.Subject -eq "CN=$Servername.$domain"} | Sort-Object NotAfter -Descending | select -First 1
+                $Cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object{$_.Subject -eq "CN=$Servername.$domain"} | Sort-Object NotAfter -Descending | Select-Object -First 1
         
                 New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $cert.Thumbprint -Force -Confirm:$false
             }
@@ -662,26 +666,23 @@
             ##Configure Data Disk
             $result = $null
             Write-Verbose ('Configuring Disk as E:\ on Server...')
-            $Script = {
-                $Disk = Get-Disk | Where-Object {$_.PartitionStyle -eq 'RAW'}
-                $Disk | Initialize-Disk
-                $result = $null
-                $result = $Disk | New-Partition -UseMaximumSize -DriveLetter E | Format-Volume -Confirm:$false
-                if ($result.DriveLetter -ne 'E') { throw ('Error creating partition and Drive Letter') }
-
-                $acl = get-acl E:\
-                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'creator owner'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null
-                $acl.RemoveAccessRule(($acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null
-                $result = $null
-                $result = $acl | Set-Acl E:\
-                if (!$result) { write-error ('Error applying permissions to E:\') }
-
-                New-Item E:\Scripts, E:\Software -ItemType container | Out-Null
-            }
-            Invoke-Command -ComputerName $ServerName -ScriptBlock $script -Credential $DomainAdminCreds -ErrorAction Continue
-            if ($result.scriptOutput -like '*Error*') { throw ('Error occured configuring E:\ Drive!') }
+            $session = New-PSSession -ComputerName $ServerName -Credential $DomainAdminCreds
+            $Result = $null
+            $Result = Invoke-Command -Session $Session -ScriptBlock {$Disk = Get-Disk | Where-Object {$_.PartitionStyle -eq 'RAW'; $Disk}}
+            if (-Not $Result) { throw ('No RAW (new) disk found to initialze!') }
+            Invoke-Command -Session $Session -ScriptBlock {$Disk | Initialize-Disk | Out-Null}
+            $Result = $null
+            $Result = Invoke-Command -Session $Session -ScriptBlock {$Disk | New-Partition -UseMaximumSize -DriveLetter E | Format-Volume -Confirm:$false}
+            if ($Result.DriveLetter -ne 'E') { throw ('Error Creating Partition and Drive Letter!') }
+            Invoke-Command -Session $Session -ScriptBlock {$Acl = Get-ACL E:\}
+            Invoke-Command -Session $Session -ScriptBlock {$Acl.RemoveAccessRule(($Acl.Access | Where-Object{$_.IdentityReference -like 'Creator Owner'})) | Out-Null}
+            Invoke-Command -Session $Session -ScriptBlock {$Acl.RemoveAccessRule(($Acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'AppendData'})) | Out-Null}
+            Invoke-Command -Session $Session -ScriptBlock {$Acl.RemoveAccessRule(($Acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'CreateFiles'})) | Out-Null}
+            Invoke-Command -Session $Session -ScriptBlock {$Acl.RemoveAccessRule(($Acl.Access | Where-Object{$_.IdentityReference -like 'Builtin\Users' -and $_.FileSystemRights -like 'ReadAndExecute*'})) | Out-Null}
+            $Result = $null
+            $Result = Invoke-Command -Session $Session -ScriptBlock {$Acl | Set-ACL 'E:\'}
+            If (-Not $Result) { throw ('Error applying ACL Permissions to "E:\"!') }
+            Invoke-Command -Session $Session -ScriptBlock {New-Item 'E:\Scripts', 'E:\Software' -ItemType container | Out-Null}
             Write-Verbose ('Disk Configured Successfully at E:\ on {0}' -f $ServerName)
 
             ### Configure AD Group for Local Admins
@@ -693,7 +694,7 @@
                 {
                     $result = $null
                     Write-Verbose ('Creating AD Group {0}' -f $Group)
-                    New-ADGroup -Name $Group -SamAccountName $Group -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOU
+                    New-ADGroup -Name $Group -SamAccountName $Group -GroupCategory Security -GroupScope DomainLocal -Path $ServerGroupsOUPath
                     $result = Get-ADGroup $Group
                     Start-Sleep 15
                     if (!$result) { Throw ('Error Creating AD Group: {0}' -f $error[0]) }
