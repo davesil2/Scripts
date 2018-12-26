@@ -650,8 +650,10 @@
                 $ServerName = $env:COMPUTERNAME
                 $Domain = $env:USERDNSDOMAIN
                 $Cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object{$_.Subject -eq "CN=$Servername.$domain"} | Sort-Object NotAfter -Descending | Select-Object -First 1
-        
-                New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $cert.Thumbprint -Force -Confirm:$false
+                if ($Cert)
+                {
+                    New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $cert.Thumbprint -Force -Confirm:$false
+                }
             }
             $result = Invoke-Command -ComputerName $serverName -ScriptBlock $Script -Credential $DomainAdminCreds -Verbose:$false
             if ($Result.ScriptOutput -notlike '') { Write-Warning ('a problem occured configuring WSMAN SSL') } Else { Write-Verbose ('WSMAN SSL Listener configured.') }
