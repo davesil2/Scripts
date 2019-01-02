@@ -148,15 +148,15 @@ function Configure-IISServer
             Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='500']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
             Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='501']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
             Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='502']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
-            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathWWWRoot -Value '$RootDriveLetter:\InetPub\wwwroot' -Force
-            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathFTPRoot -Value '$RootDriveLetter:\InetPub\wwwroot' -Force
-            Set-ItemProperty -Path HKLM:\system\CurrentControlSet\Services\was\Parameters -Name ConfigIsolationPath -Value '$RootDriveLetter:\InetPub\temp\AppPools' -Force
+            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+            Set-ItemProperty -Path HKLM:\system\CurrentControlSet\Services\was\Parameters -Name ConfigIsolationPath -Value ('{0}:\InetPub\temp\AppPools' -f $RootDriveLetter) -Force
             If ([environment]::Is64BitOperatingSystem)
             {
-                Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathWWWRoot -Value '$RootDriveLetter:\InetPub\wwwroot' -Force
-                Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathFTPRoot -Value '$RootDriveLetter:\InetPub\wwwroot' -Force
+                Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+                Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
             }
-            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WebManagement\Server -Name LoggingDirectory -Value '$RootDriveLetter:\InetPub\logs\WMSvc' -Force
+            Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WebManagement\Server -Name LoggingDirectory -Value ('{0}:\InetPub\logs\WMSvc' -f $RootDriveLetter) -Force
             Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WebManagement\Server -Name EnableRemoteManagement -Value 1 -Force
     
             #### Start Services
