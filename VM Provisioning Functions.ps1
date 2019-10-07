@@ -1039,7 +1039,7 @@ function New-SSLCertificate {
         $CAName = ((certutil -ADCA | select-string displayName | Select-Object -first 1).tostring().split('=')[1]).Trim(),
     
         #Name of Template in Certificate Authority
-        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $True, ValueFromPipelineByPropertyName)]
         [string]
         $TemplateName,
     
@@ -1069,7 +1069,8 @@ function New-SSLCertificate {
         $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip').Content)" -Verbose:$false).city,
     
         #Organization for CSR
-        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)]
+        [ValidateNotNullorEmpty()]
         [string]
         $Organization,
     
@@ -1445,10 +1446,30 @@ function Enable-WSMANwithSSL {
 
     #PS Remoting Is already enabled   
     if ($_Session) {
-        Invoke-Command -Session $_Session -ScriptBlock { $Cert = Import-PfxCertificate -Password (ConvertTo-SecureString $pfxpassword -AsPlainText -Force) -CertStoreLocation 'Cert:\LocalMachine\My' -FilePath ('C:\Windows\{0}.pfx' -f $env:COMPUTERNAME) } -ArgumentList $PFXPassword
-        Invoke-Command -Session $_Session -ScriptBlock { New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $Cert.thumbprint } -ErrorAction Stop
+        Invoke-Command -Session $_Session -ScriptBlock { Param($PFXPassword) $Cert = Import-PfxCertificate -Password (ConvertTo-SecureString $pfxpassword -AsPlainText -Force) -CertStoreLocation 'Cert:\LocalMachine\My' -FilePath ('C:\Windows\{0}.pfx' -f $env:COMPUTERNAME) } -ArgumentList $PFXPassword
+        Invoke-Command -Session $_Session -ScriptBlock { New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $Cert.thumbprint -Force -Confirm:$false} -ErrorAction Stop | Out-Null
     }
 
     #endregion
+
+    <#
+    .SYNOPSIS
+
+    Enables WSMAN SSL Listener by installing SSL Certificate specified and creating Listener
+
+    .DESCRIPTION
+
+    Enable WSMAN SSL Listener.  This requires the SSL Cerficiate be already Generated.  The partner function is New-SSLCertificate, which is designed for this function.
+
+    .EXAMPLE
+
+    $creds = Get-Credential 'administrator@domain.local'
+
+    New-SSLCertificate -Name 'SERVER01' -Organization Contoso -Template 'WebServer'
+
+    Enable-WSMANwithSSL -ServerName 'SERVER01' -ServerCreds $creds -PathtoPFXFile 'C:\server01.domain.local\server01.pfx' -PFXpassword 'testpassword'
+    
+    **Note: The above example assumes PS Remoting is already enabled.  If not already enable, you can use vCenter Credentials to enable it along with the SSL listener
+    #>
 
 }
