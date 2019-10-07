@@ -136,9 +136,15 @@ function New-VMfromTemplate {
     if (-Not $_vCenter) {
         if ($global:DefaultVIServers.Count -gt 0) {
             Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+
+            Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
-            $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            if ($vCenterCreds) {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            } else {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+            }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
         }
@@ -146,7 +152,7 @@ function New-VMfromTemplate {
     if (-Not $_vCenter) {
         Write-Error ('No vCenter Connection!') -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - Connection to vCenter "{1}" as User "{2}"' -f (get-date).tostring(),$_vCenter.Name,$_vCenter.User)
+    Write-Verbose ('{0}: VALIDATED - vCenter "{1}" connection established as "{2}"' -f (get-date).tostring(),$_vCenter.Name, $_vCenter.User)
     #endregion
 
     #region Server does not exist already
@@ -579,7 +585,11 @@ function Add-VMtoDomain {
             Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
-            $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            if ($vCenterCreds) {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            } else {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+            }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
         }
@@ -699,7 +709,7 @@ function Add-VMtoDomain {
             New-ADGroup -Name $ADGroupAdminName -SamAccountName $ADGroupAdminName -GroupScope DomainLocal -GroupCategory Security -Path $_GroupOUPath.distinguishedname -Credential $DomainCreds -Verbose:$false
             Start-Sleep 15
 
-            Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName
+            Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName)
         }
 
         if ($ServerOSType -eq 'Linux') {
@@ -843,7 +853,11 @@ function Add-DisktoVM {
             Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
-            $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            if ($vCenterCreds) {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            } else {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+            }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
         }
@@ -989,139 +1003,142 @@ function Add-DisktoVM {
 function New-SSLCertificate {
     param(
         #Certificate name (usually the short name)    
-        [parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
         [Alias('ServerName,ComputerName')]
         [string]
         $Name,
 
         #Domain Name for request (combined with Name to get FQDN)
-        [parameter(Mandatory=$false)]
+        [parameter(Mandatory = $false)]
         [string]
         $DomainName = ($env:USERDNSDOMAIN),
 
         #Common Name (set to FQDN by default)
-        [parameter(Mandatory=$false)]
+        [parameter(Mandatory = $false)]
         [string]
-        $CommonName = ('{0}.{1}' -f $Name,$DomainName),
-        
+        $CommonName = ('{0}.{1}' -f $Name, $DomainName),
+    
         #IPAddress for FQDN
-        [parameter(Mandatory=$false)]
+        [parameter(Mandatory = $false)]
         [string]
         $IPAddress = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
-        
+    
         #Subject Alternative Name to apply
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string[]]
         $SubjectAlternativeNames = $null,
-        
+    
         #Server that is your Certificate Authority
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $CAServer = ((certutil -ADCA | select-string dnshostname | Select-Object -first 1).tostring().split('=')[1]).Trim(),
-        
+    
         #Certificate Authority Name
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $CAName = ((certutil -ADCA | select-string displayName | Select-Object -first 1).tostring().split('=')[1]).Trim(),
-        
+    
         #Name of Template in Certificate Authority
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $TemplateName,
-        
+    
         #Password assigned to PFX file
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $PFXPassword = 'testpassword',
-        
+    
         #Path to Certificate Chain (will download from CA if not specified)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $ChainPath,
-        
+    
         #Country to be used by Certificate Request (uses public IP to determine country)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $Country = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).country,
-        
+    
         #State to be used by Certificiate Request (uses public IP to determine State)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $State = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).region,
-        
+    
         #Locality or City for CSR (uses public IP to determine city/locality)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip').Content)" -Verbose:$false).city,
-        
+    
         #Organization for CSR
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $Organization,
-        
+    
         #Organization Unit for CSR
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $OrganizationalUnit = 'n/a',
-        
+    
         #Path to OpenSSL executable (must be available)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $OpenSSLPath = (Get-command openssl*).Source,
-        
+    
         #Path to create folder and files for Certificate Request
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
         $OutputPath = "$((get-location).path)\$Name.$DomainName",
-        
+    
         #Overwrite existing Certificate (renames folder to backup-<date>)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [boolean]
         $OverwriteExisting = $false,
-        
+    
         #Regenerate Certificate (unused)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [boolean]
         $Regenerate = $false,
-        
+    
         #Adds default SAN Names to Request (DNS: short name, DNS: FQDN, DNS: <ipaddresss>, IP: <ipaddress>)
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [boolean]
         $UseDefaultSAN = $true,
-        
+    
         #self sign the certificate
-        [parameter(Mandatory=$false,ValueFromPipelineByPropertyName)]
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [boolean]
         $SelfSignCertificate = $false
     )
 
     $ErrorActionPreference = 'Stop'
 
-    $FQDN = ('{0}.{1}' -f $Name,$DomainName)
+    $Name = $Name.ToUpper()
+    $DomainName = $DomainName.ToUpper()
+    $FQDN = ('{0}.{1}' -f $Name, $DomainName)
 
     #region Test Path for Openssl
     If (-Not (Test-Path -Path $OpenSSLPath)) {
         Write-Error ('Path to OpenSSL not Found') -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - OpenSSL executable found at "{1}"' -f (get-date).tostring(),$OpenSSLPath)
+    Write-Verbose ('{0}: VALIDATED - OpenSSL executable found at "{1}"' -f (get-date).tostring(), $OpenSSLPath)
     #endregion
 
     #region Validate Path is available)
     if ((Test-Path -Path $OutputPath) -and -Not $OverwriteExisting) {
         Write-Error ('Output path already exists and overwrite is not selected!') -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - Output path "{1}" not available to created' -f (get-date).tostring(),$OutputPath)
+    Write-Verbose ('{0}: VALIDATED - Output path "{1}" not available to created' -f (get-date).tostring(), $OutputPath)
     #endregion
 
     #region Backup existing if overwriting
     if ($OverwriteExisting -and (Test-Path $OutputPath)) {
         try {
-            Move-Item -Path $OutputPath -Destination ('{0}-Backup_{1}' -f $OutputPath,(get-date).ToString('yyyy.MM.dd_hh.mm.ss'))
-        } catch {
+            Move-Item -Path $OutputPath -Destination ('{0}-Backup_{1}' -f $OutputPath, (get-date).ToString('yyyy.MM.dd_hh.mm.ss'))
+        }
+        catch {
             Write-Error ('Error Moving Folder!') -ErrorAction Stop
         }
     }
-    Write-Verbose ('{0}: Renamed Existing Folder from "{1}" to "{1}-Backup_{2}"' -f (get-date).tostring(),$outputpath,(get-date).tostring('yyyy.MM.dd_hh.mm.ss'))
+    Write-Verbose ('{0}: Renamed Existing Folder from "{1}" to "{1}-Backup_{2}"' -f (get-date).tostring(), $outputpath, (get-date).tostring('yyyy.MM.dd_hh.mm.ss'))
     #endregion
 
     #region Create Output Folder
@@ -1133,29 +1150,31 @@ function New-SSLCertificate {
             Write-Error ('Unable to create Output Path location!') -ErrorAction Stop
         }
 
-        Write-Verbose ('{0}: Created Output Folder "{1}"' -f (get-date).tostring(),$OutputPath)
+        Write-Verbose ('{0}: Created Output Folder "{1}"' -f (get-date).tostring(), $OutputPath)
     }
     #endregion
 
     #region Get Certificate Chain if not provided
     if (-Not $ChainPath) {
         try {
-            Invoke-Expression ("certutil -'ca.chain' -config '{0}\{1}' {2}\chain.der" -f $CAServer,$CAName,$OutputPath) | Out-Null
-            Write-Verbose ('{0}: Certutil CA Chain Exported from "{1}\{2}" to "{3}\chain.der"' -f (get-date).tostring(),$CAServer,$CAName,$OutputPath)
+            Invoke-Expression ("certutil -'ca.chain' -config '{0}\{1}' {2}\chain.der" -f $CAServer, $CAName, $OutputPath) | Out-Null
+            Write-Verbose ('{0}: Certutil CA Chain Exported from "{1}\{2}" to "{3}\chain.der"' -f (get-date).tostring(), $CAServer, $CAName, $OutputPath)
             Invoke-Expression ("certutil -encode '{0}\chain.der' '{0}\chain.p7b'" -f $OutputPath) | Out-Null
-            Write-Verbose ('{0}: Converted Encoding of CA Chain to "{1}\chain.p7b"' -f (get-date).tostring(),$OutputPath)
-            Invoke-Expression ("&'{0}' pkcs7 -print_certs -in '{1}\chain.p7b' -out '{1}\chain.pem'" -f $OpenSSLPath,$OutputPath) | Out-Null
-            Write-Verbose ('{0}: Converted P7B file to PEM at "{1}\chain.pem"' -f (get-date).tostring(),$OutputPath)
+            Write-Verbose ('{0}: Converted Encoding of CA Chain to "{1}\chain.p7b"' -f (get-date).tostring(), $OutputPath)
+            Invoke-Expression ("&'{0}' pkcs7 -print_certs -in '{1}\chain.p7b' -out '{1}\chain.pem'" -f $OpenSSLPath, $OutputPath) | Out-Null
+            Write-Verbose ('{0}: Converted P7B file to PEM at "{1}\chain.pem"' -f (get-date).tostring(), $OutputPath)
         }
         catch {
             Write-Warning ('A problem occured retrieving the Certificate Chain from CA, PFX will not be created')
         }
-    } else {
+    }
+    else {
         if (-Not (Test-Path -Path $ChainPath)) {
             Write-Warning ('Provided Certificate Chain Path is not valid!')
-        } else {
+        }
+        else {
             Copy-Item -Path $ChainPath -Destination "$OutputPath\chain.pem"
-            Write-Verbose ('{0}: Copied Certificate Chain from "{1}" to "{2}\chain.pem"' -f (get-date).tostring(),$ChainPath,$OutputPath)
+            Write-Verbose ('{0}: Copied Certificate Chain from "{1}" to "{2}\chain.pem"' -f (get-date).tostring(), $ChainPath, $OutputPath)
         }
     }
     #endregion
@@ -1175,15 +1194,15 @@ function New-SSLCertificate {
     $Template += "extendedKeyUsage = serverAuth, clientAuth" + [environment]::newline
     $Template += "subjectAltName = "
     ## Check if Default SANs should be used
-    if ($UseDefaultSAN)
-    {
+    if ($UseDefaultSAN) {
         $Template += "DNS: $name, DNS: $FQDN, DNS: $IPAddress, IP: $IPAddress"
-    } else {
+    }
+    else {
         $Template += "DNS: $CommonName"
     }
     ## Add any additional SANs provided
-    $SubjectAlternativeNames | Where-Object {$_} | ForEach-Object {if ($_ -notlike '*:*') {$Template += ",DNS:$_"} else {$Template += ",$_"}}
-    
+    $SubjectAlternativeNames | Where-Object { $_ } | ForEach-Object { if ($_ -notlike '*:*') { $Template += ",DNS:$_" } else { $Template += ",$_" } }
+
     $Template += [environment]::NewLine + [environment]::newline
     $Template += "[ req_distinguished_name ]" + [environment]::newline
     $Template += "countryName = $Country" + [environment]::newline
@@ -1195,8 +1214,8 @@ function New-SSLCertificate {
 
     $Template | Set-Content -Path "$OutputPath\$name.cfg" -Encoding Ascii
 
-    Write-Verbose ('{0}: Generated Config File Template at "{1}\{2}.cfg"' -f (get-date).tostring(),$OutputPath,$name)
-    Get-Content "$OutputPath\$name.cfg" | ForEach-Object {Write-Verbose ("{0}:`t`t{1}" -f (get-date).tostring(),$_)}
+    Write-Verbose ('{0}: Generated Config File Template at "{1}\{2}.cfg"' -f (get-date).tostring(), $OutputPath, $name)
+    Get-Content "$OutputPath\$name.cfg" | ForEach-Object { Write-Verbose ("{0}:`t`t{1}" -f (get-date).tostring(), $_) }
 
     #endregion
 
@@ -1204,14 +1223,14 @@ function New-SSLCertificate {
     #Create CSR and DSA version of Private key
     Write-Verbose ('{0}: Starting Generation of Certificate Files...' -f (get-date).tostring())
     $ErrorActionPreference = 'silentlycontinue'
-    Invoke-Expression ("& '{0}' req -new -nodes -out '{1}\{2}.csr' -keyout '{1}\{2}-orig.key' -config '{1}\{2}.cfg' -sha256 {3}" -f $OpenSSLPath,$OutputPath,$name,'2>&1 | out-null')
+    Invoke-Expression ("& '{0}' req -new -nodes -out '{1}\{2}.csr' -keyout '{1}\{2}-orig.key' -config '{1}\{2}.cfg' -sha256 {3}" -f $OpenSSLPath, $OutputPath, $name, '2>&1 | out-null')
     $ErrorActionPreference = 'Stop'
-    if (-Not (Test-Path -Path "$outputpath\$name-orig.key")){ Write-Error ('A problem occured Generating the DSA key file') -ErrorAction Stop }
+    if (-Not (Test-Path -Path "$outputpath\$name-orig.key")) { Write-Error ('A problem occured Generating the DSA key file') -ErrorAction Stop }
     if (-Not (Test-Path -Path "$OutputPath\$Name.csr")) { Write-Error ('A problem occured Generating the CSR file') -ErrorAction Stop }
     Write-Verbose ('{0}: CSR and DSA Key Generated' -f (get-date).tostring())
     #Create RSA version
     $ErrorActionPreference = 'silentlycontinue'
-    Invoke-Expression ("& '{0}' rsa -in '{1}\{2}-orig.key' -out '{1}\{2}.key' {3}" -f $OpenSSLPath,$OutputPath,$name,'2>&1 | out-null')
+    Invoke-Expression ("& '{0}' rsa -in '{1}\{2}-orig.key' -out '{1}\{2}.key' {3}" -f $OpenSSLPath, $OutputPath, $name, '2>&1 | out-null')
     $ErrorActionPreference = 'stop'
     if (-Not (Test-Path -Path "$outputpath\$name.key")) { Write-Error ('A problem occured Generating the RSA key file') -ErrorAction Stop }
     Write-Verbose ('{0}: RSA Key created from DSA Key' -f (get-date).tostring())
@@ -1219,88 +1238,217 @@ function New-SSLCertificate {
 
     #region Submit Signing request
     if ($SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath,$OutputPath,$Name,'2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
         Write-Verbose ('{0}: CSR Signed by Self')
-    } else {
-        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer,$CAName,$TemplateName,$OutputPath,$Name,'2>&1 | out-null') -ErrorAction Stop -OutVariable $result
-        Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(),$caserver,$CAName)
+    }
+    else {
+        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(), $caserver, $CAName)
     }
     #endregion
 
     #region Create PFX
     if ((Test-Path -Path "$OutputPath\Chain.pem") -and -Not $SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath,$OutputPath,$Name,$FQDN,$PFXPassword,'2>&1 | out-null') -ErrorAction Continue -OutVariable $result
-        
+        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue -OutVariable $result
+    
     }
     #endregion
 
     <#
-    .SYNOPSIS
-    Creates Certificate Request and signs with internal CA or self
+.SYNOPSIS
+Creates Certificate Request and signs with internal CA or self
 
-    .DESCRIPTION
-    This function attempts to pre-populate parameters to allow a relatively quick Certificate Creation Process.
+.DESCRIPTION
+This function attempts to pre-populate parameters to allow a relatively quick Certificate Creation Process.
 
-    Minimum Required Values = Name,TemplateName,Organization (assuming only one CA in environment)
+Minimum Required Values = Name,TemplateName,Organization (assuming only one CA in environment)
 
-    OpenSSL.exe is used to execute most commands except the signing process since certutil is the best path for Windows CA.
+OpenSSL.exe is used to execute most commands except the signing process since certutil is the best path for Windows CA.
 
-    If you do not have OpenSSL, we recommend using choco to install openssl.light or download to your computer appropriately through the web.
+If you do not have OpenSSL, we recommend using choco to install openssl.light or download to your computer appropriately through the web.
 
-    .EXAMPLE
+.EXAMPLE
 
-    Minimum Options Used Below:
+Minimum Options Used Below:
 
-    New-SSLCertificate -Name SERVER01 -TemplateName WebServer -Organization Constoso
+New-SSLCertificate -Name SERVER01 -TemplateName WebServer -Organization Constoso
 
-    **Note: This Assumes you have: 
-        1.) openssl in your command path under powershell, 
-        2.) one CA on your network
-        3.) you want the local path for output
-        4.) PublicIP is correct for country, state and city/locality
-        5.) FQDN resolves to IP address
-        6.) domain name is the same as for the computer you are current running command
+**Note: This Assumes you have: 
+    1.) openssl in your command path under powershell, 
+    2.) one CA on your network
+    3.) you want the local path for output
+    4.) PublicIP is correct for country, state and city/locality
+    5.) FQDN resolves to IP address
+    6.) domain name is the same as for the computer you are current running command
 
-    .EXAMPLE
+.EXAMPLE
 
-    All Options being Set Below:
+All Options being Set Below:
 
-    New-SSLCertificate -Name SERVER01 `
-        -Domain 'contoso.local' `
-        -IPAddress '10.0.0.5' `
-        -CAServer 'CASERVER01' `
-        -CAName 'CASERVER01-CA' `
-        -TemplateName WebServer `
-        -PFXPassword 'supersecure' `
-        -ChainPath 'C:\chain.pem' `
-        -Country US -State TX `
-        -Locality Austin `
-        -Organization 'Contoso' `
-        -OpenSSLPath 'C:\openssl\openssl.exe' `
-        -OutputPath 'c:\Certs\SERVER01.contoso.local'
+New-SSLCertificate -Name SERVER01 `
+    -Domain 'contoso.local' `
+    -IPAddress '10.0.0.5' `
+    -CAServer 'CASERVER01' `
+    -CAName 'CASERVER01-CA' `
+    -TemplateName WebServer `
+    -PFXPassword 'supersecure' `
+    -ChainPath 'C:\chain.pem' `
+    -Country US -State TX `
+    -Locality Austin `
+    -Organization 'Contoso' `
+    -OpenSSLPath 'C:\openssl\openssl.exe' `
+    -OutputPath 'c:\Certs\SERVER01.contoso.local'
 
-    **Note: generally this it is not necessary to specify ALL options
+**Note: generally this it is not necessary to specify ALL options
 
-    .EXAMPLE
+.EXAMPLE
 
-    $Array = @()
-    $Array += New-Object psobject -Property @{Name='SERVER01';
-        TemplateName='WebServer';
-        Organization='Contoso';
-        OpenSSLPath='C:\Program Files\OpenSSL\bin\openssl.exe';
-        OverwriteExisting=$true}
+$Array = @()
+$Array += New-Object psobject -Property @{Name='SERVER01';
+    TemplateName='WebServer';
+    Organization='Contoso';
+    OpenSSLPath='C:\Program Files\OpenSSL\bin\openssl.exe';
+    OverwriteExisting=$true}
 
-    $Array | foreach-object {New-SSLCertificate -Name $_.Name -TemplateName $_.TemplateName -Organization $_.Organization -OpenSSLPath $_.OpenSSLPath -OverwriteExisting $_.OverwriteExisting}
+$Array | foreach-object {New-SSLCertificate -Name $_.Name -TemplateName $_.TemplateName -Organization $_.Organization -OpenSSLPath $_.OpenSSLPath -OverwriteExisting $_.OverwriteExisting}
 
-    **Note: The above can be used to create multiple Certificates quickly
+**Note: The above can be used to create multiple Certificates quickly
 
-    #>
+#>
 }
 
 function Enable-WSMANwithSSL {
     param(
+        # vCenter Fully Qualified Domain Name
+        [parameter(Mandatory=$false)]
+        [string]
+        $vCenterFQDN,
 
+        # optional credentails to vCenter
+        [parameter(Mandatory=$false)]
+        [pscredential]
+        $vCenterCreds,
+
+        # name of server to configure
+        [parameter(Mandatory=$True)]
+        [string]
+        $ServerName,
+
+        # optional Credentials to Server
+        [parameter(Mandatory=$false)]
+        [pscredential]
+        $ServerCreds,
+
+        # path to pfx file with crt and key
+        [parameter(Mandatory=$true)]
+        [string]
+        $PathtoPFXFile,
+
+        # password for pfx file
+        [parameter(Mandatory=$true)]
+        [string]
+        $PFXPassword
     )
 
+    $ErrorActionPreference = 'Stop'
+
+    #region Validation
+
+    #region vCenter Validation
+    $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
+    if (-Not $_vCenter) {
+        if ($global:DefaultVIServers.Count -gt 0) {
+            Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+
+            Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
+        }
+        try{
+            if ($vCenterCreds) {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+            } else {
+                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+            }
+        } catch {
+            Write-Warning ('A Problem occured connecting to vCenter!')
+        }
+    }
+
+    if (-Not $_vCenter) {
+        Write-Warning ('No vCenter Connection!') -ErrorAction Stop
+    }
+    Write-Verbose ('{0}: VALIDATED - vCenter "{1}" connection established as "{2}"' -f (get-date).tostring(),$_vCenter.Name, $_vCenter.User)
+    #endregion
+
+    #region Server Validation
+    #Connect to psremoting
+    if ($ServerCreds) {
+        $_Session = New-PSSession -ComputerName $ServerName -Credential $ServerCreds -ErrorAction SilentlyContinue -Verbose:$false
+    }
+    else {
+        $_Session = New-PSSession -ComputerName $ServerName -ErrorAction SilentlyContinue -Verbose:$false
+    }
+
+    #Get VM from vCenter if connected
+    if ($_vCenter) {
+        $_VM = Get-VM -Name $ServerName -ErrorAction SilentlyContinue -Verbose:$false
+    }
+
+    if (-Not ($_Session)) {
+        Write-Warning ('Unable to connect to pssession for "{0}"' -f (get-date).tostring(), $ServerName)
+        if (-Not ($_VM)) {
+            Write-Error ('No PS Remoting and No VM Connection to Server "{0}"' -f $ServerName)
+        }
+        Write-Verbose ('{0}: VALIDATED - VM Found for Server "{1}"' -f (get-date).ToString(), $ServerName)
+    }
+    else {
+        Write-Verbose ('{0}: VALIDATED - PS Remoting Already Configured on Server "{1}"' -f (get-date).ToString(), $ServerName)
+    }
+
+    #endregion
+
+    #region PFX Validation
+    if (-Not (Test-Path -Path $PathtoPFXFile -PathType Leaf)) {
+        Write-Error ('File Path Provide does not exist and/or is not a file!')
+    }
+    else {
+        try {
+            if ($ServerCreds) {
+                New-PSDrive -Name $servername -PSProvider FileSystem -Root ('\\{0}\c$' -f $ServerName) -Credential $ServerCreds | Out-Null
+                Copy-Item $PathtoPFXFile -Destination('{0}:\Windows\{0}.pfx' -f $ServerName) | Out-Null
+            }
+            else {
+                Copy-Item $PathtoPFXFile -Destination ('\\{0}\c$\Windows\{0}.pfx' -f $ServerName) -ErrorAction Stop
+            }
+        }
+        catch {
+            Write-Error ('A problem occured trying to copy file "{0}" to server "{1}"' -f $PathtoPFXFile, $ServerName)
+        }
+        Write-Verbose ('{0}: Copied file "{1}" to Server "{2}" C:\Windows\' -f (get-date).ToString(),$PathtoPFXFile,$ServerName)
+    }
+    #endregion
+
+    #endregion
+
+    #region Configure WSMAN with SSL
+
+    #Enable PS Remoting if not already enabled
+    if (-Not $_Session -and $_VM) {
+        Invoke-VMScript -VM $_VM -GuestCredential $ServerCreds -ScriptText "Enable-PSRemoting -Force"
+
+        if ($ServerCreds) {
+            $_Session = New-PSSession -ComputerName $ServerName -Credential $ServerCreds
+        }
+        else {
+            $_Session = New-PSSession -ComputerName $ServerName
+        }
+    }
+
+    #PS Remoting Is already enabled   
+    if ($_Session) {
+        Invoke-Command -Session $_Session -ScriptBlock { $Cert = Import-PfxCertificate -Password (ConvertTo-SecureString $pfxpassword -AsPlainText -Force) -CertStoreLocation 'Cert:\LocalMachine\My' -FilePath ('C:\Windows\{0}.pfx' -f $env:COMPUTERNAME) } -ArgumentList $PFXPassword
+        Invoke-Command -Session $_Session -ScriptBlock { New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $Cert.thumbprint } -ErrorAction Stop
+    }
+
+    #endregion
 
 }
