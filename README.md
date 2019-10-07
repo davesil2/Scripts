@@ -1,14 +1,31 @@
 # Scripts
+This is some of the work I've done up until this point with PowerShell.  My goal is to refine the scripts I've written for re-use.  While this is primarily for myself, you are welcome to use/re-use according to the license agreement.
 
-The scripts in here are defined as functions.  Each of the functions has been something I have spent time working through to allow me to perform tasks that are or at least were not native to PowerShell.
+## VM Provisioning
+Refining the production scripts used to provision VM's.  The file "VM Provisioning Funciton.ps1" is the compilation with notes.
 
-* Create-Certificate
-* Create-NewVM
-* Configure-IISServer
-* Global Functions
+* New-VMfromTemplate
+* Add-VMtoDomain
+* Add-DisktoVM
+* New-SSLCertificate
+* Enable-WSMANwithSSL
 
-Documentation is primarily provided in the Script itself.  However, one of the Scripts I've spent a lot of time and gathered over the years is the "Global Functions".  This "script" was designed to be used as an auto loaded file at powershell start up due to the fact that importing modules and all of that can prove to me frustrating.  By design, you could place the file in a central location (like \\<domain>\netlogon\) and have a script on the server side (possibly pushed via GPO) to read and invoke the script line by line (bypassing the script execution issues)
+I will have a wiki page on using these functions together soon.  In the mean time, the help is filled out.  Any input on problems or suggestions is welcome at this time.
 
-The above info is documented at the top of the script.
+## Global Functions
+These are functions that I've had use for over the years.  The Script is put together to be run at powershell startup with Inovke-Expression from the PSHome paths.
 
-Further documentation is located at https://github.com/davesil2/Scripts/wiki
+    `Invoke-Expression ((Get-Content \\<domain>\netlogon\globalfunctions.ps1) -join [environment]::newline)`
+
+Placeing the file on the \\<domain>\netlogon\ network share of the domain and placing the above line in your $pshome.allusersallhosts will load the functions in the script without error or problems of remote script execution.
+
+Some of the handy function in this script are below:
+
+* Test-Port (instead of telnet)
+* Test-Ping (returns object data)
+* Get-Uptime (returns local or remote computer uptime)
+* Get-WWN (Returns FiberChannel WWN's on computer)
+* Get-RandomPassword
+* ...and more...
+
+### Additional documentation is located at https://github.com/davesil2/Scripts/wiki
