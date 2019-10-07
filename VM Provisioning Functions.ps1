@@ -40,7 +40,7 @@ function New-VMfromTemplate {
         $vCenterCluster,
 
         # Folder under VM and Template to create VM
-        [parameter(Mandatory=$true)]
+        [parameter(Mandatory=$false)]
         [string]
         $vCenterFolder,
 
@@ -227,9 +227,9 @@ function New-VMfromTemplate {
     #region VM Folder Validation
     $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false
     if (-Not $_VMFolder) {
-        Write-Error ('VM Folder not Found!') -ErrorAction Stop
+        Write-Warning ('VM Folder not Found!') -ErrorAction Stop
     }
-    if ($_VMFolder.Count -ne 1) {
+    if ($_VMFolder.Count -gt 1) {
         Write-Error ('More than one matching folder found!') -ErrorAction Stop
     }
     Write-Verbose ('{0}: VALIDATED - Folder "{1}" found on vCenter "{2}"' -f (get-date).ToString(),$_VMFolder.Name,$_vCenter.Name)
@@ -348,7 +348,11 @@ function New-VMfromTemplate {
     #endregion
 
     #region Create VM
-    New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Location $_VMFolder -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+    if ($_VMFolder) {
+        New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Location $_VMFolder -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+    } else {
+        New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+    }
 
     Write-Verbose ('{0}: VM "{1}" Created!' -f (get-date).ToString(),$ServerName)
 
@@ -1291,4 +1295,12 @@ function New-SSLCertificate {
     **Note: The above can be used to create multiple Certificates quickly
 
     #>
+}
+
+function Enable-WSMANwithSSL {
+    param(
+
+    )
+
+
 }
