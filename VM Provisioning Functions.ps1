@@ -376,7 +376,7 @@ function New-VMfromTemplate {
         Write-Verbose ('{0}: VM "{1}" started...' -f (get-date).ToString(),$_VM.Name)
 
         While (!(Get-VIEvent -Entity $_VM -Verbose:$false | Where-Object {$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'})) {
-            Write-Verbose ('Waiting for VM Customization to Complete...')
+            Write-Verbose ("`t`tWaiting for VM Customization to Complete...")
             Start-Sleep 10
         }
         Write-Verbose ('{0}: Customization on VM "{1}" completed!' -f (get-date).ToString(),$_VM.Name)
@@ -1070,7 +1070,7 @@ function New-SSLCertificate {
         #Locality or City for CSR (uses public IP to determine city/locality)
         [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
-        $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip').Content)" -Verbose:$false).city,
+        $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).city,
     
         #Organization for CSR
         [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)]
