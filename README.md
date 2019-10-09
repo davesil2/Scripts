@@ -15,7 +15,9 @@ I will have a wiki page on using these functions together soon.  In the mean tim
 ## Global Functions
 These are functions that I've had use for over the years.  The Script is put together to be run at powershell startup with Inovke-Expression from the PSHome paths.
 
-    `Invoke-Expression ((Get-Content \\<domain>\netlogon\globalfunctions.ps1) -join [environment]::newline)`
+```
+    Invoke-Expression ((Get-Content \\<domain>\netlogon\globalfunctions.ps1) -join [environment]::newline)
+```
 
 Placeing the file on the \\<domain>\netlogon\ network share of the domain and placing the above line in your $pshome.allusersallhosts will load the functions in the script without error or problems of remote script execution.
 
