@@ -58,7 +58,7 @@ function New-VMfromTemplate {
         [parameter(Mandatory=$false)]
         [ValidateNotNullorEmpty()]
         [string]
-        $vCenterPortGroup = ($ServerIPAddressCIDR.split('/')[0] + '*'),
+        $vCenterPortGroup = (($ServerIPAddressCIDR.split('.')[0..2] -join '.') + '.0*'),
 
         # Customization Spec to use for VM
         [parameter(Mandatory=$true)]
@@ -73,7 +73,7 @@ function New-VMfromTemplate {
 
         # Name of Server and VM to create
         [parameter(Mandatory=$true)]
-        [ValidateLength(15)]
+        [ValidateLength(3,15)]
         [string]
         $ServerName,
 
@@ -93,7 +93,7 @@ function New-VMfromTemplate {
         # Subnet for IP address (calculated by CIDR Notation)
         [ValidateNotNullorEmpty()]
         [string]
-        $ServerIPSubnet = (''.PadLeft(($ipaddress.split('/')[1]),'1') + ''.PadRight((32 - ($ServerIPAddressCIDR.Split('/')[1])),'0') | ForEach-Object {('{0}.{1}.{2}.{3}' -f [convert]::ToInt32($_.Substring(0,8),2),[convert]::ToInt32($_.Substring(8,8),2),[convert]::ToInt32($_.Substring(16,8),2),[convert]::ToInt32($_.Substring(24,8),2))}),
+        $ServerIPSubnet = (''.PadLeft(($ServerIPAddressCIDR.split('/')[1]),'1') + ''.PadRight((32 - ($ServerIPAddressCIDR.Split('/')[1])),'0') | ForEach-Object {('{0}.{1}.{2}.{3}' -f [convert]::ToInt32($_.Substring(0,8),2),[convert]::ToInt32($_.Substring(8,8),2),[convert]::ToInt32($_.Substring(16,8),2),[convert]::ToInt32($_.Substring(24,8),2))}),
 
         # Calculated by CIDR Notation assuming .1
         [ValidateNotNullorEmpty()]
@@ -231,7 +231,9 @@ function New-VMfromTemplate {
     #endregion
 
     #region VM Folder Validation
-    $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false
+    if ($vCenterFolder) {
+        $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false -ErrorAction SilentlyContinue
+    }
     if (-Not $_VMFolder) {
         Write-Warning ('VM Folder not Found!') -ErrorAction Stop
     }
@@ -256,7 +258,7 @@ function New-VMfromTemplate {
     #endregion
 
     #region Check for custom attributes
-    $Attributes = Get-CustomAttribute
+    $Attributes = Get-CustomAttribute -Verbose:$false -ErrorAction SilentlyContinue
     if ($Attributes) {
         if ($Attributes | Where-Object {$_.name -like 'Created By'}) {
             Write-Warning ('Created By Attribute Not Found!')
@@ -601,7 +603,7 @@ function Add-VMtoDomain {
     #endregion
 
     #region VM/Server Validation
-    $_VM = Get-VM $ServerName
+    $_VM = Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
     if (Get-ADComputer -filter {name -like $servername} -ErrorAction SilentlyContinue -Verbose:$false) {
         Write-Error ('Server AD Computer Object already exists!') -ErrorAction Stop
     }
@@ -684,11 +686,13 @@ function Add-VMtoDomain {
 
     #region Ensure PSRemoting is enabled for Windows
     if ($ServerOSType -eq 'Windows') {
-        $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false
+        $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         if (-Not ($_Session) -and $EnableWSMAN) {
             Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText "Enable-PSRemoting -Force" -Verbose:$false
 
             Write-Verbose ('{0}: Unable to connect via PS Remoting, Ran "Enable-PSRemoting -Force" on {1}' -f (get-date).ToString(),$_VM.Name)
+
+            $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         }
     }
     #endregion
@@ -696,7 +700,7 @@ function Add-VMtoDomain {
     #region Update OS network adapter name
     if ($ServerOSType -eq 'Windows' -and ($_session)) {
         if ($UpdateOSNICtoPortGroupName) {
-            Invoke-Command -Session $_session -ScriptBlock {Param($Param); Get-NetworkAdapter -Verbose:$false | Rename-NetworkAdapter -NewName $Param -Verbose:$false} -ArgumentList ($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName
+            Invoke-Command -Session $_session -ScriptBlock {Param($Param); Get-NetAdapter -Verbose:$false | Rename-NetAdapter -NewName $Param -Verbose:$false} -ArgumentList ($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName
             
             Write-Verbose ('{0}: Updated OS Network Adapter Name to "{1}"' -f (get-date).ToString(),($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName)
         }
@@ -733,7 +737,7 @@ function Add-VMtoDomain {
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName)
+        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false | Out-Null
         #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
         
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
@@ -749,7 +753,7 @@ function Add-VMtoDomain {
 
         ##Update DNS registration
         $Script = { /opt/pbis/bin/update-dns }
-        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash
+        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
     }
     #endregion
 
@@ -1420,11 +1424,11 @@ function Enable-WSMANwithSSL {
             else {
                 Copy-Item $PathtoPFXFile -Destination ('\\{0}\c$\Windows\{0}.pfx' -f $ServerName) -ErrorAction Stop
             }
+            Write-Verbose ('{0}: Copied file "{1}" to Server "{2}" C:\Windows\' -f (get-date).ToString(),$PathtoPFXFile,$ServerName)
         }
         catch {
             Write-Error ('A problem occured trying to copy file "{0}" to server "{1}"' -f $PathtoPFXFile, $ServerName)
         }
-        Write-Verbose ('{0}: Copied file "{1}" to Server "{2}" C:\Windows\' -f (get-date).ToString(),$PathtoPFXFile,$ServerName)
     }
     #endregion
 
@@ -1442,12 +1446,16 @@ function Enable-WSMANwithSSL {
         else {
             $_Session = New-PSSession -ComputerName $ServerName
         }
+
+        Write-Verbose ('{0}: PSRemoting Enabled on "{1}"' -f $ServerName)
     }
 
     #PS Remoting Is already enabled   
     if ($_Session) {
         Invoke-Command -Session $_Session -ScriptBlock { Param($PFXPassword) $Cert = Import-PfxCertificate -Password (ConvertTo-SecureString $pfxpassword -AsPlainText -Force) -CertStoreLocation 'Cert:\LocalMachine\My' -FilePath ('C:\Windows\{0}.pfx' -f $env:COMPUTERNAME) } -ArgumentList $PFXPassword
+        Write-Verbose ('{0}: Imported PFX Certificate')
         Invoke-Command -Session $_Session -ScriptBlock { New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $Cert.thumbprint -Force -Confirm:$false} -ErrorAction Stop | Out-Null
+        Write-Verbose ('{0}: Configured SSL Listener')
     }
 
     #endregion
