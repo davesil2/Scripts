@@ -1501,11 +1501,22 @@ function Install-IISServer {
         [String]
         $RootDriveLetter = 'E',
 
+        # Cleanup Application Pools
+        [parameter(Mandatory=$false)]
+        [boolean]
+        $CleanupAppPools = $true,
+
+        # Configure WMSVC to use signed Certificate
+        [parameter(Mandatory=$false)]
+        [boolean]
+        $ConfigureCertWMSVC = $true,
+
         # IIS Features to install
         [Parameter(Mandatory=$false)]
         [ValidateSet('Web-Application-Proxy','Web-Server','Web-WebServer','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Http-Redirect','Web-DAV-Publishing','Web-Health','Web-Http-Logging','Web-Custom-Logging','Web-Log-Libraries','Web-ODBC-Logging','Web-Request-Monitor','Web-Http-Tracing','Web-Performance','Web-Stat-Compression','Web-Dyn-Compression','Web-Security','Web-Filtering','Web-Basic-Auth','Web-CertProvider','Web-Client-Auth','Web-Digest-Auth','Web-Cert-Auth','Web-IP-Security','Web-Url-Auth','Web-Windows-Auth','Web-App-Dev','Web-Net-Ext','Web-Net-Ext45','Web-AppInit','Web-ASP','Web-Asp-Net','Web-Asp-Net45','Web-CGI','Web-ISAPI-Ext','Web-ISAPI-Filter','Web-Includes','Web-WebSockets','Web-Ftp-Server','Web-Ftp-Service','Web-Ftp-Ext','Web-Mgmt-Tools','Web-Mgmt-Console','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Mgmt-Console','Web-Lgcy-Scripting','Web-WMI','Web-Scripting-Tools','Web-Mgmt-Service','Web-WHC')]
         [String[]]
         $RolesandFeatures = ('Web-Server','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Health','Web-http-logging','Web-custom-logging','web-http-tracing','web-performance','web-stat-compression','web-dyn-compression','web-security','web-filtering','web-basic-auth','web-ip-security','web-url-auth','web-windows-auth','web-app-dev','web-net-ext45','web-appinit','web-asp','web-asp-net45','web-isapi-ext','web-isapi-filter','web-mgmt-console','web-mgmt-service','Web-Log-Libraries','Web-Request-Monitor','Web-Digest-Auth','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Scripting','Web-WMI')
+
     )
 
     $ErrorActionPreference = 'Stop'
@@ -1606,31 +1617,31 @@ function Install-IISServer {
     #endregion
 
     #region Configure SSL for Remote Management
+    if ($ConfigureCertWMSVC -and 'web-mgmt-service' -in $RolesandFeatures) {
+        Invoke-Command -Session $_Session -ScriptBlock {Stop-Service wmsvc -force} -WarningAction SilentlyContinue
+        Write-Verbose ('{0}: Stopped IIS Remote Management Service' -f (Get-Date).ToString())
+        
+        $Cert = Invoke-Command -Session $_Session -ScriptBlock {Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.subject -like "*CN=" + $env:COMPUTERNAME + "*"}}
+        if ($Cert) {
+            Invoke-Command -Session $_Session -ScriptBlock {Remove-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop| Out-Null
+            Write-Verbose ('{0}: Removed existing listener "IIS:\SSLBindings\0.0.0.0!8172"')
+            Invoke-Command -Session $_Session -ScriptBlock {Param($Cert); $Cert | New-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop -ArgumentList $cert | Out-Null
+            Write-Verbose ('{0}: Created New Listener with thumbprint "{1}"' -f (Get-Date).ToString(),$Cert.thumbprint)
+        } else {
+            Write-Warning ('{0}: No Certificate matching server name found')
+        }
 
-    Invoke-Command -Session $_Session -ScriptBlock {Stop-Service wmsvc -force} -WarningAction SilentlyContinue
-    Write-Verbose ('{0}: Stopped IIS Remote Management Service' -f (Get-Date).ToString())
-    
-    $Cert = Invoke-Command -Session $_Session -ScriptBlock {Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.subject -like "*CN=" + $env:COMPUTERNAME + "*"}}
-    if ($Cert) {
-        Invoke-Command -Session $_Session -ScriptBlock {Remove-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop| Out-Null
-        Write-Verbose ('{0}: Removed existing listener "IIS:\SSLBindings\0.0.0.0!8172"')
-        Invoke-Command -Session $_Session -ScriptBlock {Param($Cert); $Cert | New-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop -ArgumentList $cert | Out-Null
-        Write-Verbose ('{0}: Created New Listener with thumbprint "{1}"' -f (Get-Date).ToString(),$Cert.thumbprint)
-    } else {
-        Write-Warning ('{0}: No Certificate matching server name found')
+        Invoke-Command -Session $_Session -ScriptBlock {Start-Service wmsvc} -ErrorAction Stop | Out-Null
+        Write-Verbose ('{0}: Started IIS Remote Management Service' -f (Get-Date).ToString())
     }
-
-    Invoke-Command -Session $_Session -ScriptBlock {Start-Service wmsvc} -ErrorAction Stop | Out-Null
-    Write-Verbose ('{0}: Started IIS Remote Management Service' -f (Get-Date).ToString())
-
     #endregion
 
     #region Remove Extra AppPools
+    if ($CleanupAppPools) {}
+        Invoke-Command -Session $_Session -ScriptBlock {remove-item iis:\apppools\*.net* -force -confirm:$false -recurse} | Out-Null
 
-    Invoke-Command -Session $_Session -ScriptBlock {remove-item iis:\apppools\*.net* -force -confirm:$false -recurse} | Out-Null
-
-    Write-Verbose ('{0}: Removed Extra Unused App Pools' -f (Get-Date).ToString())
-
+        Write-Verbose ('{0}: Removed Extra Unused App Pools' -f (Get-Date).ToString())
+    }
     #endregion
 
     <#
@@ -1641,7 +1652,13 @@ function Install-IISServer {
 
     .DESCRIPTION
 
+    Installs Windows IIS Server on the remote machine.  Additional setup includes:
 
+        configure IIS Remote Management Certificate to be signed
+        Move IIS settings off of C Drive to specified drive letter
+        Cleanup Unnecessary Application Pools
+    
+    Roles and Features are selectable but a default list is set by default
 
     #>
 }
