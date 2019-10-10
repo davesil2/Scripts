@@ -835,7 +835,7 @@ function Add-DisktoVM {
         
         #Label to specify on Disk in OS
         [String]
-        $ServerDiskLabel,
+        $ServerDiskLabel = ('{0} - {1}' -f $ServerDiskPath,$ServerName),
         
         #NTFS Allocation Unit Size (4Kb, 8Kb, 16Kb, 32Kb, 64Kb)
         [string]
