@@ -1637,7 +1637,7 @@ function Install-IISServer {
     #endregion
 
     #region Remove Extra AppPools
-    if ($CleanupAppPools) {}
+    if ($CleanupAppPools) {
         Invoke-Command -Session $_Session -ScriptBlock {remove-item iis:\apppools\*.net* -force -confirm:$false -recurse} | Out-Null
 
         Write-Verbose ('{0}: Removed Extra Unused App Pools' -f (Get-Date).ToString())
