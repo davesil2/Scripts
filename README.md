@@ -10,13 +10,13 @@ Refining the production scripts used to provision VM's.  The file "VM Provisioni
 * New-SSLCertificate
 * Enable-WSMANwithSSL
 
-I will have a wiki page on using these functions together soon.  In the mean time, the help is filled out.  Any input on problems or suggestions is welcome at this time.
+Examples: [VM Provsioning Examples](./wiki/vm-provisoning-examples)
 
 ## Global Functions
 These are functions that I've had use for over the years.  The Script is put together to be run at powershell startup with Inovke-Expression from the PSHome paths.
 
-```
-    Invoke-Expression ((Get-Content \\<domain>\netlogon\globalfunctions.ps1) -join [environment]::newline)
+```Powershell
+Invoke-Expression ((Get-Content \\<domain>\netlogon\globalfunctions.ps1) -join [environment]::newline)
 ```
 
 Placeing the file on the \\<domain>\netlogon\ network share of the domain and placing the above line in your $pshome.allusersallhosts will load the functions in the script without error or problems of remote script execution.
