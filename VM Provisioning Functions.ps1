@@ -58,7 +58,7 @@ function New-VMfromTemplate {
         [parameter(Mandatory=$false)]
         [ValidateNotNullorEmpty()]
         [string]
-        $vCenterPortGroup = ($ServerIPAddressCIDR.split('/')[0] + '*'),
+        $vCenterPortGroup = (($ServerIPAddressCIDR.split('.')[0..2] -join '.') + '.0*'),
 
         # Customization Spec to use for VM
         [parameter(Mandatory=$true)]
@@ -73,7 +73,7 @@ function New-VMfromTemplate {
 
         # Name of Server and VM to create
         [parameter(Mandatory=$true)]
-        [ValidateLength(15)]
+        [ValidateLength(3,15)]
         [string]
         $ServerName,
 
@@ -93,7 +93,7 @@ function New-VMfromTemplate {
         # Subnet for IP address (calculated by CIDR Notation)
         [ValidateNotNullorEmpty()]
         [string]
-        $ServerIPSubnet = (''.PadLeft(($ipaddress.split('/')[1]),'1') + ''.PadRight((32 - ($ServerIPAddressCIDR.Split('/')[1])),'0') | ForEach-Object {('{0}.{1}.{2}.{3}' -f [convert]::ToInt32($_.Substring(0,8),2),[convert]::ToInt32($_.Substring(8,8),2),[convert]::ToInt32($_.Substring(16,8),2),[convert]::ToInt32($_.Substring(24,8),2))}),
+        $ServerIPSubnet = (''.PadLeft(($ServerIPAddressCIDR.split('/')[1]),'1') + ''.PadRight((32 - ($ServerIPAddressCIDR.Split('/')[1])),'0') | ForEach-Object {('{0}.{1}.{2}.{3}' -f [convert]::ToInt32($_.Substring(0,8),2),[convert]::ToInt32($_.Substring(8,8),2),[convert]::ToInt32($_.Substring(16,8),2),[convert]::ToInt32($_.Substring(24,8),2))}),
 
         # Calculated by CIDR Notation assuming .1
         [ValidateNotNullorEmpty()]
@@ -231,7 +231,9 @@ function New-VMfromTemplate {
     #endregion
 
     #region VM Folder Validation
-    $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false
+    if ($vCenterFolder) {
+        $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false -ErrorAction SilentlyContinue
+    }
     if (-Not $_VMFolder) {
         Write-Warning ('VM Folder not Found!') -ErrorAction Stop
     }
@@ -256,7 +258,7 @@ function New-VMfromTemplate {
     #endregion
 
     #region Check for custom attributes
-    $Attributes = Get-CustomAttribute
+    $Attributes = Get-CustomAttribute -Verbose:$false -ErrorAction SilentlyContinue
     if ($Attributes) {
         if ($Attributes | Where-Object {$_.name -like 'Created By'}) {
             Write-Warning ('Created By Attribute Not Found!')
@@ -374,7 +376,7 @@ function New-VMfromTemplate {
         Write-Verbose ('{0}: VM "{1}" started...' -f (get-date).ToString(),$_VM.Name)
 
         While (!(Get-VIEvent -Entity $_VM -Verbose:$false | Where-Object {$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'})) {
-            Write-Verbose ('Waiting for VM Customization to Complete...')
+            Write-Verbose ("`t`tWaiting for VM Customization to Complete...")
             Start-Sleep 10
         }
         Write-Verbose ('{0}: Customization on VM "{1}" completed!' -f (get-date).ToString(),$_VM.Name)
@@ -601,7 +603,7 @@ function Add-VMtoDomain {
     #endregion
 
     #region VM/Server Validation
-    $_VM = Get-VM $ServerName
+    $_VM = Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
     if (Get-ADComputer -filter {name -like $servername} -ErrorAction SilentlyContinue -Verbose:$false) {
         Write-Error ('Server AD Computer Object already exists!') -ErrorAction Stop
     }
@@ -684,11 +686,13 @@ function Add-VMtoDomain {
 
     #region Ensure PSRemoting is enabled for Windows
     if ($ServerOSType -eq 'Windows') {
-        $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false
+        $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         if (-Not ($_Session) -and $EnableWSMAN) {
             Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText "Enable-PSRemoting -Force" -Verbose:$false
 
             Write-Verbose ('{0}: Unable to connect via PS Remoting, Ran "Enable-PSRemoting -Force" on {1}' -f (get-date).ToString(),$_VM.Name)
+
+            $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         }
     }
     #endregion
@@ -696,7 +700,7 @@ function Add-VMtoDomain {
     #region Update OS network adapter name
     if ($ServerOSType -eq 'Windows' -and ($_session)) {
         if ($UpdateOSNICtoPortGroupName) {
-            Invoke-Command -Session $_session -ScriptBlock {Param($Param); Get-NetworkAdapter -Verbose:$false | Rename-NetworkAdapter -NewName $Param -Verbose:$false} -ArgumentList ($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName
+            Invoke-Command -Session $_session -ScriptBlock {Param($Param); Get-NetAdapter -Verbose:$false | Rename-NetAdapter -NewName $Param -Verbose:$false} -ArgumentList ($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName
             
             Write-Verbose ('{0}: Updated OS Network Adapter Name to "{1}"' -f (get-date).ToString(),($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName)
         }
@@ -733,7 +737,7 @@ function Add-VMtoDomain {
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName)
+        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false | Out-Null
         #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
         
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
@@ -749,7 +753,7 @@ function Add-VMtoDomain {
 
         ##Update DNS registration
         $Script = { /opt/pbis/bin/update-dns }
-        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash
+        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
     }
     #endregion
 
@@ -831,7 +835,7 @@ function Add-DisktoVM {
         
         #Label to specify on Disk in OS
         [String]
-        $ServerDiskLabel,
+        $ServerDiskLabel = ('{0} - {1}' -f $ServerDiskPath,$ServerName),
         
         #NTFS Allocation Unit Size (4Kb, 8Kb, 16Kb, 32Kb, 64Kb)
         [string]
@@ -1066,7 +1070,7 @@ function New-SSLCertificate {
         #Locality or City for CSR (uses public IP to determine city/locality)
         [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
         [string]
-        $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip').Content)" -Verbose:$false).city,
+        $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).city,
     
         #Organization for CSR
         [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)]
@@ -1420,11 +1424,11 @@ function Enable-WSMANwithSSL {
             else {
                 Copy-Item $PathtoPFXFile -Destination ('\\{0}\c$\Windows\{0}.pfx' -f $ServerName) -ErrorAction Stop
             }
+            Write-Verbose ('{0}: Copied file "{1}" to Server "{2}" C:\Windows\' -f (get-date).ToString(),$PathtoPFXFile,$ServerName)
         }
         catch {
             Write-Error ('A problem occured trying to copy file "{0}" to server "{1}"' -f $PathtoPFXFile, $ServerName)
         }
-        Write-Verbose ('{0}: Copied file "{1}" to Server "{2}" C:\Windows\' -f (get-date).ToString(),$PathtoPFXFile,$ServerName)
     }
     #endregion
 
@@ -1442,12 +1446,16 @@ function Enable-WSMANwithSSL {
         else {
             $_Session = New-PSSession -ComputerName $ServerName
         }
+
+        Write-Verbose ('{0}: PSRemoting Enabled on "{1}"' -f $ServerName)
     }
 
     #PS Remoting Is already enabled   
     if ($_Session) {
         Invoke-Command -Session $_Session -ScriptBlock { Param($PFXPassword) $Cert = Import-PfxCertificate -Password (ConvertTo-SecureString $pfxpassword -AsPlainText -Force) -CertStoreLocation 'Cert:\LocalMachine\My' -FilePath ('C:\Windows\{0}.pfx' -f $env:COMPUTERNAME) } -ArgumentList $PFXPassword
+        Write-Verbose ('{0}: Imported PFX Certificate')
         Invoke-Command -Session $_Session -ScriptBlock { New-Item WSMan:\localhost\Listener -Address * -Transport https -CertificateThumbPrint $Cert.thumbprint -Force -Confirm:$false} -ErrorAction Stop | Out-Null
+        Write-Verbose ('{0}: Configured SSL Listener')
     }
 
     #endregion
@@ -1479,21 +1487,36 @@ function Install-IISServer {
         # Name of Server that IIS will be installed on
         [Parameter(Mandatory=$True)]
         [ValidateLength(1,15)]
-        [String]$ServerName,
+        [String]
+        $ServerName,
 
         # Credentials to connect to Server
         [Parameter(Mandatory=$True)]
-        [PSCredential]$AdminCreds,
+        [PSCredential]
+        $AdminCreds,
 
         # Drive letter where InetPub should exist
         [Parameter(Mandatory=$false)]
         [ValidateLength(1,1)]
-        [String]$RootDriveLetter = 'E',
+        [String]
+        $RootDriveLetter = 'E',
+
+        # Cleanup Application Pools
+        [parameter(Mandatory=$false)]
+        [boolean]
+        $CleanupAppPools = $true,
+
+        # Configure WMSVC to use signed Certificate
+        [parameter(Mandatory=$false)]
+        [boolean]
+        $ConfigureCertWMSVC = $true,
 
         # IIS Features to install
         [Parameter(Mandatory=$false)]
         [ValidateSet('Web-Application-Proxy','Web-Server','Web-WebServer','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Http-Redirect','Web-DAV-Publishing','Web-Health','Web-Http-Logging','Web-Custom-Logging','Web-Log-Libraries','Web-ODBC-Logging','Web-Request-Monitor','Web-Http-Tracing','Web-Performance','Web-Stat-Compression','Web-Dyn-Compression','Web-Security','Web-Filtering','Web-Basic-Auth','Web-CertProvider','Web-Client-Auth','Web-Digest-Auth','Web-Cert-Auth','Web-IP-Security','Web-Url-Auth','Web-Windows-Auth','Web-App-Dev','Web-Net-Ext','Web-Net-Ext45','Web-AppInit','Web-ASP','Web-Asp-Net','Web-Asp-Net45','Web-CGI','Web-ISAPI-Ext','Web-ISAPI-Filter','Web-Includes','Web-WebSockets','Web-Ftp-Server','Web-Ftp-Service','Web-Ftp-Ext','Web-Mgmt-Tools','Web-Mgmt-Console','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Mgmt-Console','Web-Lgcy-Scripting','Web-WMI','Web-Scripting-Tools','Web-Mgmt-Service','Web-WHC')]
-        [String[]]$RolesandFeatures = ('Web-Server','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Health','Web-http-logging','Web-custom-logging','web-http-tracing','web-performance','web-stat-compression','web-dyn-compression','web-security','web-filtering','web-basic-auth','web-ip-security','web-url-auth','web-windows-auth','web-app-dev','web-net-ext45','web-appinit','web-asp','web-asp-net45','web-isapi-ext','web-isapi-filter','web-mgmt-console','web-mgmt-service','Web-Log-Libraries','Web-Request-Monitor','Web-Digest-Auth','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Scripting','Web-WMI')
+        [String[]]
+        $RolesandFeatures = ('Web-Server','Web-Common-Http','Web-Default-Doc','Web-Dir-Browsing','Web-Http-Errors','Web-Static-Content','Web-Health','Web-http-logging','Web-custom-logging','web-http-tracing','web-performance','web-stat-compression','web-dyn-compression','web-security','web-filtering','web-basic-auth','web-ip-security','web-url-auth','web-windows-auth','web-app-dev','web-net-ext45','web-appinit','web-asp','web-asp-net45','web-isapi-ext','web-isapi-filter','web-mgmt-console','web-mgmt-service','Web-Log-Libraries','Web-Request-Monitor','Web-Digest-Auth','Web-Mgmt-Compat','Web-Metabase','Web-Lgcy-Scripting','Web-WMI')
+
     )
 
     $ErrorActionPreference = 'Stop'
@@ -1527,7 +1550,7 @@ function Install-IISServer {
     #region Install IIS on Server
 
     try {
-        Invoke-Command -Session $_Session -ScriptBlock {Param($RolesandFeatures); $RolesandFeatures | Add-windowsFeatures } -ArgumentList $RolesandFeatures | Out-Null
+        Invoke-Command -Session $_Session -ScriptBlock {Param($RolesandFeatures); $RolesandFeatures | Add-windowsFeature } -ArgumentList (,$RolesandFeatures) | Out-Null
     } catch {
         Write-Error ('A problem occurred adding windows features "{0}"' -f ($RolesandFeatures -join ','))
     }
@@ -1538,41 +1561,104 @@ function Install-IISServer {
     #region Move InetPub to RootDriveLetter
 
     if ($RootDriveLetter -ne 'C') {
-        Invoke-Command -Session $_Session -ScriptBlock {Get-Module -ListAvailable WebAdministration | Import-Module -ErrorAction SilentlyContinue}
-        Invoke-Command -Session $_Session -ScriptBlock {Backup-WebConfiguration -Name 'BeforeRootMove'}
-        Invoke-Command -Session $_Session -ScriptBlock {Stop-Service W3SVC,WAS,WMSVC -Force -ErrorAction Continue}
-        Invoke-Command -Session $_Session -ScriptBlock {New-Item ('{0}:\InetPub' -f $RootDriveLetter) -ItemType Container}
-        Invoke-Command -Session $_Session -ScriptBlock {Get-ACL -Path C:\InetPub | Set-ACL -Path ('{0}:\InetPub' -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {$files = Get-ChildItem C:\InetPub -recurse}
-        Invoke-Command -Session $_Session -ScriptBlock {Param($RootDriveLetter); $files | ForEach-Object {Copy-Item $_.FullName -Destination $_.FullName.Replace('C:',('{0}:' -f $RootDriveLetter));Get-Acl -Path $_.FullName | Set-Acl -Path $_.FullName.Replace('C:',('{0}:' -f $RootDriveLetter))}} -ArgumentList $RootDriveLetter
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name "traceFailedRequestsLogging.Directory" -Value ("{0}:\InetPub\Logs\FailedRequestLogFiles" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name "LogFile.Directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.applicationHost/log" -name "centralBinaryLogFile.directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.applicationHost/log" -name "centralW3CLogFile.directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.applicationHost/configHistory" -name "Path" -Value ("{0}:\InetPub\History" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.webServer/asp" -name "cache.disktemplateCacheDirectory" -Value ("{0}:\InetPub\Temp\ASP Compiled Templates" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty "/system.webServer/httpCompression" -name "directory" -Value ("{0}:\InetPub\Temp\IIS Temporary Compressed Files" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty 'IIS:\Sites\Default Web Site' -Name 'PhysicalPath' -Value ("{0}:\InetPub\WWWRoot" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='401']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='403']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='404']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='405']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='406']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='412']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='500']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='501']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-WebConfigurationProperty  "/system.WebServer/HttpErrors/error[@statusCode='502']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\InetStp -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty -Path HKLM:\system\CurrentControlSet\Services\was\Parameters -Name ConfigIsolationPath -Value ('{0}:\InetPub\temp\AppPools' -f $RootDriveLetter) -Force}
-        Invoke-Command -Session $_Session -ScriptBlock {If ([environment]::Is64BitOperatingSystem) { Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force}}
-        Invoke-Command -Session $_Session -ScriptBlock {If ([environment]::Is64BitOperatingSystem) { Set-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force}}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WebManagement\Server -Name LoggingDirectory -Value ('{0}:\InetPub\logs\WMSvc' -f $RootDriveLetter) -Force}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WebManagement\Server -Name EnableRemoteManagement -Value 1 -Force}
-        Invoke-Command -Session $_Session -ScriptBlock {Start-Service W3SVC,WAS,WMSVC -ErrorAction SilentlyContinue}
-        Invoke-Command -Session $_Session -ScriptBlock {Set-Service WMSVC -StartupType Automatic}
-        Invoke-Command -Session $_Session -ScriptBlock {Remove-Item 'C:\InetPub' -Recurse -Force}
+        $Script = {
+            Param(
+                $RootDriveLetter
+            )
+            
+            Get-Module -ListAvailable WebAdministration | Import-Module -ErrorAction SilentlyContinue
+
+            #Backup-WebConfiguration -Name 'BeforeRootMove'
+            Stop-Service W3SVC,WAS,WMSVC -Force -ErrorAction Continue
+
+            New-Item ('{0}:\InetPub' -f $RootDriveLetter) -ItemType Container
+            Get-ACL -Path C:\InetPub | Set-ACL -Path ('{0}:\InetPub' -f $RootDriveLetter)
+
+            $files = Get-ChildItem C:\InetPub -recurse
+
+            $files | ForEach-Object {
+                Copy-Item $_.FullName -Destination $_.FullName.Replace('C:',('{0}:' -f $RootDriveLetter));
+                Get-Acl -Path $_.FullName | Set-Acl -Path $_.FullName.Replace('C:',('{0}:' -f $RootDriveLetter))
+            }
+
+            Set-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name "traceFailedRequestsLogging.Directory" -Value ("{0}:\InetPub\Logs\FailedRequestLogFiles" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name "LogFile.Directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.applicationHost/log" -name "centralBinaryLogFile.directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.applicationHost/log" -name "centralW3CLogFile.directory" -Value ("{0}:\InetPub\Logs\LogFiles" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.applicationHost/configHistory" -name "Path" -Value ("{0}:\InetPub\History" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.webServer/asp" -name "cache.disktemplateCacheDirectory" -Value ("{0}:\InetPub\Temp\ASP Compiled Templates" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.webServer/httpCompression" -name "directory" -Value ("{0}:\InetPub\Temp\IIS Temporary Compressed Files" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='401']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='403']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='404']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='405']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='406']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='412']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='500']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='501']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-WebConfigurationProperty "/system.WebServer/HttpErrors/error[@statusCode='502']" -name "prefixLanguageFilePath" -Value ("{0}:\InetPub\CustErr" -f $RootDriveLetter)
+            Set-ItemProperty 'IIS:\Sites\Default Web Site' -Name 'PhysicalPath' -Value ("{0}:\InetPub\WWWRoot" -f $RootDriveLetter)
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\InetStp' -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\InetStp' -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+            Set-ItemProperty -Path 'HKLM:\system\CurrentControlSet\Services\was\Parameters' -Name ConfigIsolationPath -Value ('{0}:\InetPub\temp\AppPools' -f $RootDriveLetter) -Force
+            If ([environment]::Is64BitOperatingSystem) { 
+                Set-ItemProperty -Path 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp' -Name PathWWWRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+                Set-ItemProperty -Path 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\InetStp' -Name PathFTPRoot -Value ('{0}:\InetPub\wwwroot' -f $RootDriveLetter) -Force
+            }
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\WebManagement\Server' -Name LoggingDirectory -Value ('{0}:\InetPub\logs\WMSvc' -f $RootDriveLetter) -Force
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\WebManagement\Server' -Name EnableRemoteManagement -Value 1 -Force
+            Start-Service W3SVC,WAS,WMSVC -ErrorAction SilentlyContinue
+            Set-Service WMSVC -StartupType Automatic
+            Remove-Item 'C:\InetPub' -Recurse -Force
+        }
+        Invoke-Command -Session $_Session -ScriptBlock $Script -ArgumentList $RootDriveLetter
     }
 
     #endregion
+
+    #region Configure SSL for Remote Management
+    if ($ConfigureCertWMSVC -and 'web-mgmt-service' -in $RolesandFeatures) {
+        Invoke-Command -Session $_Session -ScriptBlock {Stop-Service wmsvc -force} -WarningAction SilentlyContinue
+        Write-Verbose ('{0}: Stopped IIS Remote Management Service' -f (Get-Date).ToString())
+        
+        $Cert = Invoke-Command -Session $_Session -ScriptBlock {Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.subject -like "*CN=" + $env:COMPUTERNAME + "*"}}
+        if ($Cert) {
+            Invoke-Command -Session $_Session -ScriptBlock {Remove-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop| Out-Null
+            Write-Verbose ('{0}: Removed existing listener "IIS:\SSLBindings\0.0.0.0!8172"')
+            Invoke-Command -Session $_Session -ScriptBlock {Param($Cert); $Cert | New-Item IIS:\SSLBindings\0.0.0.0!8172} -ErrorAction Stop -ArgumentList $cert | Out-Null
+            Write-Verbose ('{0}: Created New Listener with thumbprint "{1}"' -f (Get-Date).ToString(),$Cert.thumbprint)
+        } else {
+            Write-Warning ('{0}: No Certificate matching server name found')
+        }
+
+        Invoke-Command -Session $_Session -ScriptBlock {Start-Service wmsvc} -ErrorAction Stop | Out-Null
+        Write-Verbose ('{0}: Started IIS Remote Management Service' -f (Get-Date).ToString())
+    }
+    #endregion
+
+    #region Remove Extra AppPools
+    if ($CleanupAppPools) {}
+        Invoke-Command -Session $_Session -ScriptBlock {remove-item iis:\apppools\*.net* -force -confirm:$false -recurse} | Out-Null
+
+        Write-Verbose ('{0}: Removed Extra Unused App Pools' -f (Get-Date).ToString())
+    }
+    #endregion
+
+    <#
+    
+    .SYNOPSIS
+
+    This function will install IIS on the specified Server using PS Remoting and move InetPub to an alternate location
+
+    .DESCRIPTION
+
+    Installs Windows IIS Server on the remote machine.  Additional setup includes:
+
+        configure IIS Remote Management Certificate to be signed
+        Move IIS settings off of C Drive to specified drive letter
+        Cleanup Unnecessary Application Pools
+    
+    Roles and Features are selectable but a default list is set by default
+
+    #>
 }
