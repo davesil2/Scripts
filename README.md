@@ -10,7 +10,7 @@ Refining the production scripts used to provision VM's.  The file "VM Provisioni
 * New-SSLCertificate
 * Enable-WSMANwithSSL
 
-Examples: [VM Provsioning Examples](https://github.com/davesil2/Scripts/wiki/vm-provisoning-examples)
+Examples: [VM Provsioning Examples](https://github.com/davesil2/Scripts/wiki/VM-Provisioning-Examples)
 
 ## Global Functions
 These are functions that I've had use for over the years.  The Script is put together to be run at powershell startup with Inovke-Expression from the PSHome paths.
