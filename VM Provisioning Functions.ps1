@@ -646,7 +646,10 @@ function Add-VMtoDomain {
 
     #region Join AD Domain
     if ($ServerOSType -eq 'Windows') {
-        $Script = ('$Password = Convertto-SecureString "{0}" -Force -AsPlainText; $User = "{1}"; $Cred = New-Object PSCredential $User,$Password; Add-Computer -DomainName "{2}" -OUPath "{3}" -Credential $Cred -Restart' -f $DomainCreds.GetNetworkCredential().Password,$DomainCreds.GetNetworkCredential().Username,$ADDomainName,$_serveroupath.distinguishedName)
+        $Script =  ('$Password = Convertto-SecureString ')
+        $Script += ("'{0}' -Force -AsPlainText;" -f $DomainCreds.GetNetworkCredential().Password)
+        $Script += ('$Cred = New-Object PSCredential "{0}",$Password;' -f $DomainCreds.UserName)
+        $Script += ('Add-Computer -DomainName "{0}" -OUPath "{1}" -Credential $Cred -Restart' -f $ADDomainName,$_serveroupath.distinguishedName)
     } else {
         $Script = ('domainjoin-cli join --ou {0} {1} {2} {3}; history -c' -f $serveroupath, $ADDomainName, $creds.GetNetworkCredential().UserName, $creds.GetNetworkCredential().Password) 
     }
