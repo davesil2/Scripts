@@ -291,172 +291,7 @@ function Test-SQLDBExists {
     #>
 }
 
-function Test-Ping {
-    Param(
-        # Server or ComputerName or IP address to ping
-        [Parameter(Mandatory=$true)]
-        [String]
-        $Server,
 
-        # Number of pings to Server
-        [Parameter(Mandatory=$false)]
-        [Int]
-        $Count=4,
-
-        # Continuously Ping
-        [Parameter(Mandatory=$false)]
-        [Switch]
-        $Continuous,
-
-        # Return True or False for available
-        [Parameter(Mandatory=$false)]
-        [Switch]
-        $Quiet
-    )
-    
-    $_IP = $null
-    $_HostEntry = $Null
-    
-    if (-Not ([System.Net.IPAddress]::TryParse($Server, [Ref] $_IP))) {
-        try {
-            $_HostEntry = [net.dns]::GetHostEntry($Server)
-
-            Write-Verbose ('{0}: Resolved Server Name "{1}" to "{2}"' -f (get-date).tostring(),$Server,$_HostEntry.AddressList.IPAddressToString)
-        } Catch {
-            Write-Error ('Error Resolving the Host Name "{0}"' -f $Server) -ErrorAction Stop
-        }
-    } else {
-        Write-Verbose ('{0}: Provide Server appears to be an IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
-    }
-
-    if ($Quiet) {
-        $Count = 1
-        Write-Verbose ('{0}: Testing Ping of Server with quiet response' -f (get-date).tostring())
-    }
-    
-    $_array = @()
-    $_obj = New-Object PSObject
-
-    While ($Count) {
-        if ($_HostEntry) {
-            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_HostEntry.AddressList[0].IPAddressToString) | Select-Object @{N='HostName';E={$_HostEntry.HostName}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-            Write-Verbose ('{0}: Pinging Host Name "{1}"' -f (get-date).tostring(),$_HostEntry.HostName)
-        }
-        else {
-            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_IP.IPAddressToString) | Select-Object @{N='HostName';E={$_IP.IPAddressToString}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-            Write-Verbose ('{0}: Pinging IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
-        }
-        
-        $_array += $_obj
-        if (-Not $Continuous) {
-            $count -= 1
-        }
-        if (-Not $Quiet) {
-            $_obj
-        }
-    }
-
-    Write-Verbose ('{0}: Completed Count of Pings "{1}"' -f (get-date).tostring(),$Count)
-
-    if ($Quiet) {
-        Write-Verbose ('{0}: Returning True/False for result')
-        if ($_obj.Status -eq 'Success') {
-            return $true
-        } else {
-            return $true
-        }
-    }
-    
-
-    <#
-    .SYNOPSIS
-    
-    Object Oriented Ping Testing
-    
-    .DESCRIPTION
-    
-    Ping tests if the remote server or ip address is responding to ICMP Ping
-
-    Function supports:
-
-        * Quiet Mode (true/false result)
-        * Continuous Ping
-        * Limited Ping Count (Default: 4)
-
-    .EXAMPLE
-
-    Test-Ping -Server SERVER01 -count 5
-
-    .EXAMPLE
-
-    Test-Ping -Server 10.0.0.5
-
-    .EXAMPLE
-
-    Test-Ping -Server www.google.com -Quiet
-    #>
-}
-
-Function Test-Port {
-    Param(
-        # Name or IP of Server to test
-        [Parameter(Mandatory=$true)]
-        [String]
-        $Server,
-
-        # Port Number to Test Server
-        [Parameter(Mandatory=$true)]
-        [Int]
-        $Port,
-
-        # Timeout Value if not connecting
-        [Parameter(Mandatory=$False)]
-        [Int]
-        $Timeout = 3000
-    )
-    
-    $_IP = [net.dns]::Resolve($server).addresslist[0].ipaddresstostring      
-
-    if ($_IP) {    
-        [void] ($socket = New-Object net.sockets.tcpclient)
-        $Connection = $socket.BeginConnect($server,$Port,$null,$null)
-        [void] ($Connection.AsyncWaitHandle.WaitOne($TimeOut,$False))
-        
-        $hash = @{Server=$Server
-                  IPAddress = $_IP
-                  Port=$Port
-                  Successful=($socket.connected)}
-                  
-        $socket.Close()
-        
-    } else {
-        $hash = @{Server=$server
-                  IPAddress = $null
-                  Port=$Port
-                  Successful=$null}
-    }
-    
-    return (new-object PSObject -Property $hash) | Select-Object Server,IPAddress,Port,Successful
-
-    <#
-    .SYNOPSIS
-
-    Test-Port allows you to test if a port is accessible
-    
-    .DESCRIPTION
-
-    Using Test-Port you can find if a specified port is open on a machine.  The results are the original servername, Ipaddress, Port and if successful
-    
-    .Parameter Server
-    The server parameter is the name of the machine you want to test, either FQDN or NetBIOS name
-    .Parameter Port
-    Use Port Parameter to specify the port to test
-    .Parameter TimeOut
-    Use Timeout value to specify how long to wait for connection in milliseconds
-    .Example
-    Test-Port -Server www.google.com -Port 80
-    #>
-}
 #endregion
 
 #region Generic Supporting functions
@@ -703,6 +538,173 @@ function Get-RandomPassword {
 
     Generate a Random password with configurable Characters, length and complexity requirements
 
+    #>
+}
+
+function Test-Ping {
+    Param(
+        # Server or ComputerName or IP address to ping
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Server,
+
+        # Number of pings to Server
+        [Parameter(Mandatory=$false)]
+        [Int]
+        $Count=4,
+
+        # Continuously Ping
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $Continuous,
+
+        # Return True or False for available
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $Quiet
+    )
+    
+    $_IP = $null
+    $_HostEntry = $Null
+    
+    if (-Not ([System.Net.IPAddress]::TryParse($Server, [Ref] $_IP))) {
+        try {
+            $_HostEntry = [net.dns]::GetHostEntry($Server)
+
+            Write-Verbose ('{0}: Resolved Server Name "{1}" to "{2}"' -f (get-date).tostring(),$Server,$_HostEntry.AddressList.IPAddressToString)
+        } Catch {
+            Write-Error ('Error Resolving the Host Name "{0}"' -f $Server) -ErrorAction Stop
+        }
+    } else {
+        Write-Verbose ('{0}: Provide Server appears to be an IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
+    }
+
+    if ($Quiet) {
+        $Count = 1
+        Write-Verbose ('{0}: Testing Ping of Server with quiet response' -f (get-date).tostring())
+    }
+    
+    $_array = @()
+    $_obj = New-Object PSObject
+
+    While ($Count) {
+        if ($_HostEntry) {
+            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_HostEntry.AddressList[0].IPAddressToString) | Select-Object @{N='HostName';E={$_HostEntry.HostName}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
+            Write-Verbose ('{0}: Pinging Host Name "{1}"' -f (get-date).tostring(),$_HostEntry.HostName)
+        }
+        else {
+            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_IP.IPAddressToString) | Select-Object @{N='HostName';E={$_IP.IPAddressToString}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
+            Write-Verbose ('{0}: Pinging IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
+        }
+        
+        $_array += $_obj
+        if (-Not $Continuous) {
+            $count -= 1
+        }
+        if (-Not $Quiet) {
+            $_obj
+        }
+    }
+
+    Write-Verbose ('{0}: Completed Count of Pings "{1}"' -f (get-date).tostring(),$Count)
+
+    if ($Quiet) {
+        Write-Verbose ('{0}: Returning True/False for result')
+        if ($_obj.Status -eq 'Success') {
+            return $true
+        } else {
+            return $true
+        }
+    }
+    
+
+    <#
+    .SYNOPSIS
+    
+    Object Oriented Ping Testing
+    
+    .DESCRIPTION
+    
+    Ping tests if the remote server or ip address is responding to ICMP Ping
+
+    Function supports:
+
+        * Quiet Mode (true/false result)
+        * Continuous Ping
+        * Limited Ping Count (Default: 4)
+
+    .EXAMPLE
+
+    Test-Ping -Server SERVER01 -count 5
+
+    .EXAMPLE
+
+    Test-Ping -Server 10.0.0.5
+
+    .EXAMPLE
+
+    Test-Ping -Server www.google.com -Quiet
+    #>
+}
+
+Function Test-Port {
+    Param(
+        # Name or IP of Server to test
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Server,
+
+        # Port Number to Test Server
+        [Parameter(Mandatory=$true)]
+        [Int]
+        $Port,
+
+        # Timeout Value if not connecting
+        [Parameter(Mandatory=$False)]
+        [Int]
+        $Timeout = 3000
+    )
+    
+    $_IP = [net.dns]::Resolve($server).addresslist[0].ipaddresstostring      
+
+    if ($_IP) {    
+        [void] ($socket = New-Object net.sockets.tcpclient)
+        $Connection = $socket.BeginConnect($server,$Port,$null,$null)
+        [void] ($Connection.AsyncWaitHandle.WaitOne($TimeOut,$False))
+        
+        $hash = @{Server=$Server
+                  IPAddress = $_IP
+                  Port=$Port
+                  Successful=($socket.connected)}
+                  
+        $socket.Close()
+        
+    } else {
+        $hash = @{Server=$server
+                  IPAddress = $null
+                  Port=$Port
+                  Successful=$null}
+    }
+    
+    return (new-object PSObject -Property $hash) | Select-Object Server,IPAddress,Port,Successful
+
+    <#
+    .SYNOPSIS
+
+    Test-Port allows you to test if a port is accessible
+    
+    .DESCRIPTION
+
+    Using Test-Port you can find if a specified port is open on a machine.  The results are the original servername, Ipaddress, Port and if successful
+    
+    .Parameter Server
+    The server parameter is the name of the machine you want to test, either FQDN or NetBIOS name
+    .Parameter Port
+    Use Port Parameter to specify the port to test
+    .Parameter TimeOut
+    Use Timeout value to specify how long to wait for connection in milliseconds
+    .Example
+    Test-Port -Server www.google.com -Port 80
     #>
 }
 #endregion
@@ -2657,8 +2659,383 @@ function Enable-FSRMforSQL {
 
 function Install-SQLServer {
     Param(
+        [parameter(Mandatory=$true)]
+        [string]    
+        $ServerName,
+        
+        [parameter(Mandatory=$false)]
+        [pscredential]
+        $ServerCreds,
 
+        [parameter(Mandatory=$true)]
+        [string]
+        $SQLISOPath,
+
+        [parameter(Mandatory=$true)]
+        [string]
+        $SQLInstallKey,
+
+        [Parameter(Mandatory=$true)]
+        [PSCredential]
+        $svcAccountCreds,
+
+        [Parameter(Mandatory=$true)]
+        [String]
+        $SysAdminGroup,
+
+        [Parameter(Mandatory=$false)]
+        [String]
+        $FileShareGroup,
+
+        [Parameter(Mandatory=$false)]
+        [boolean]
+        $ConfigureFileShare = $true,
+
+        [Parameter(Mandatory=$false)]
+        [string]
+        $FileShareName = 'DataAccess$',
+
+        [parameter(Mandatory=$false)]
+        [ValidateSet('SQLEngine','Replication','FullText','Conn')]
+        [string[]]
+        $SQLServerFeatures = ('SQLEngine','Replication','FullText','Conn'),
+        
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLInstanceName = 'MSSQLSERVER',
+
+        # Base Directory/Location for SQL Instance (needs to be <drive>:\\ with two backslashes for the root)
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLInstanceDir = 'E:\\',
+
+        # Location where script files will be located
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $ScriptsDir = 'E:\Scripts',
+
+        # Location Where software will be located
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SoftwareDir = 'E:\Software',
+
+        # Location where the SQL MSSQL folder will be placed (needs to be <drive>: without any slashes for the root)
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $InstallSQLDataDir = 'E:',
+
+        # Default location for Backups
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLBackupDir='E:\Backups',
+
+        # Default Location for SQL User DB Data Files
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLUserDBDataDir='E:\SQLDATA01',
+
+        # Default Location for SQL User DB Log Files
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLUserDBLogsDir='E:\SQLLOGS01',
+
+        # Default Location for TempDB Data Files
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLTempDBDataDir='E:\TDBDATA01',
+
+        # Default Location for TempDB Log Files
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $SQLTempDBLogsDir='E:\TDBLOGS01',
+
+        # TempDB File Count for 2016 and newer
+        [Parameter(Mandatory=$false)]
+        [int]
+        $SQLTempDBFileCount = 1,
+
+        # TempDB File Growth Size for 2016 and newer
+        [Parameter(Mandatory=$false)]
+        [int]
+        $SQLTempDBFileGrowth = 100,
+
+        # TempDB File Size for 2016 and newer
+        [Parameter(Mandatory=$false)]
+        [int]
+        $SQLTempDBFileSize = 100,
+
+        # TempDB Log File Size for 2016 and newer
+        [Parameter(Mandatory=$false)]
+        [int]
+        $SQLTempDBLogFileSize = 100,
+
+        # TempDB Log File Growth for 2016 and newer
+        [Parameter(Mandatory=$false)]
+        [int]
+        $SQLTempDBLogFileGrowth = 100,
+
+        # Install Management Studio on Server
+        [parameter(Mandatory=$false)]
+        [switch]
+        $InstallMgmtStudio,
+
+        # Set to create Directories if they don't exist
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $CreateMissingDirectories
     )
 
+    #region Check PS Session to Server and create
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+
+    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+        Write-Error ('Session Validation Failed') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Session to Server Validated' -f (get-date).tostring())
+    #endregion
+
+    #region Check Directories
+    $_ScriptsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $ScriptsDir")) -ErrorAction SilentlyContinue
+    $_SoftwareDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SoftwareDir")) -ErrorAction SilentlyContinue
+    $_SQLBackupDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLBackupDir")) -ErrorAction SilentlyContinue
+    $_SQLUserDBDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLUserDBDataDir")) -ErrorAction SilentlyContinue
+    $_SQLUserDBLogsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLUserDBLogsDir")) -ErrorAction SilentlyContinue
+    $_SQLTempDBDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLTempDBDataDir")) -ErrorAction SilentlyContinue
+    $_SQLTempDBLogsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLTempDBLogsDir")) -ErrorAction SilentlyContinue
+    $_SQLInstanceDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $SQLInstanceDir")) -ErrorAction SilentlyContinue
+    $_InstallSQLDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item $InstallSQLDataDir")) -ErrorAction SilentlyContinue
     
+    if (-Not $CreateMissingDirectories) {
+        if (-Not ($_ScriptsDir)) {
+            Write-Error ('Script Directory "{0}" was not found on Server "{1}"' -f $ScriptsDir,$_session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Scripts Directory "{1}" Found on Server' -f (get-date).tostring(),$_ScriptsDir)
+
+        if (-Not ($_SoftwareDir)) {
+            Write-Error ('Software Directory "{0}" not found on server "{1}"' -f $SoftwareDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Software Directory "{1}" Found on Server' -f (get-date).tostring(),$_SoftwareDir)
+
+        if (-Not ($_SQLBackupDir)) {
+            Write-Error ('SQL Backup Directory "{0}" not found on server "{1}"' -f $SQLBackupDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Backup Directory "{1}" Found on Server' -f (get-date).tostring(),$_SQLBackupDir)
+        
+        if (-Not ($_SQLUserDBDataDir)) {
+            Write-Error ('SQL UserDB Data Directory "{0}" not found on server "{1}"' -f $SQLUserDBDataDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - UserDB Data Directory "{1}" Found on Server' -f (get-date).tostring(),$_SQLUserDBDataDir)
+
+        if (-Not ($_SQLUserDBLogsDir)) {
+            Write-Error ('SQL UserDB Logs Directory "{0}" not found on server "{1}"' -f $SQLUserDBLogsDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - UserDB Logs Directory "{1}" Found on Server' -f (get-date).tostring(),$_SQLUserDBLogsDir)
+
+        if (-Not ($_SQLTempDBDataDir)) {
+            Write-Error ('SQL TempDB Data Directory "{0}" not found on server "{1}"' -f $SQLTempDBDataDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - TempDB Data Directory "{1}" Found on Server' -f (get-date).tostring(),$_SQLTempDBDataDir)
+
+        if (-Not ($_SQLTempDBLogsDir)) {
+            Write-Error ('SQL TempDB Logs Directory "{0}" not found on server "{1}"' -f $SQLTempDBLogsDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - TempDB Logs Directory "{1}" Found on Server' -f (get-date).tostring(),$_SQLTempDBLogsDir)
+
+        if (-Not ($_InstallSQLDataDir)) {
+            Write-Error ('Install SQL Data Directory "{0}" not found on server "{1}"' -f $InstallSQLDataDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Install SQL Directory "{1}" Found on Server' -f (get-date).tostring(),$_InstallSQLDataDir)
+
+        if (-Not ($_SQLInstanceDir)) {
+            Write-Error ('SQL Instance Directory "{0}" not found on server "{1}"' -f $SQLInstanceDir,$_Session.ComputerName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - SQL Directory "{1}" Found on Server' -f (get-date).tostring(),$_InstallSQLDataDir)
+    } else {
+        if (-Not ($_ScriptsDir)) {
+            $_ScriptsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $ScriptsDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$ScriptsDir)
+        }
+
+        if (-Not ($_SoftwareDir)) {
+            $_SoftwareDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SoftwareDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SoftwareDir)
+        }
+
+        if (-Not ($_SQLBackupDir)) {
+            $_SQLBackupDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLBackupDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLBackupDir)
+        }
+        
+        if (-Not ($_SQLUserDBDataDir)) {
+            $_SQLUserDBDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLUserDBDataDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLUserDBDataDir)
+        }
+
+        if (-Not ($_SQLUserDBLogsDir)) {
+            $_SQLUserDBLogsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLUserDBLogsDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLUserDBLogsDir)
+        }
+
+        if (-Not ($_SQLTempDBDataDir)) {
+            $_SQLTempDBDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLTempDBDataDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLTempDBDataDir)
+        }
+
+        if (-Not ($_SQLTempDBLogsDir)) {
+            $_SQLTempDBLogsDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLTempDBLogsDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLTempDBLogsDir)
+        }
+
+        if (-Not ($_InstallSQLDataDir)) {
+            $_InstallSQLDataDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $InstallSQLDataDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$InstallSQLDataDir)
+        }
+
+        if (-Not ($_SQLInstanceDir)) {
+            $_SQLInstanceDir = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-Item -Path $SQLInstanceDir -ItemType Container")) -ErrorAction Stop
+            Write-Verbose ('{0}: VALIDATED - Created Scripts Directory "{1}"' -f (get-date).tostring(),$SQLInstanceDir)
+        }
+    }
+    #endregion
+
+    #region Validate ISO Path and key exist
+    Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Mount-DiskImage -ImagePath $SQLISOPath")) -ErrorAction SilentlyContinue
+    Invoke-command -Session $_Session -ScriptBlock {Set-Location ((Get-Volume | where-object {$_.FileSystem -eq "CDFS"} | Select-Object -first 1).DriveLetter + ":")} -ErrorAction SilentlyContinue
+    
+    $SetupFile = Invoke-Command -Session $_session -ScriptBlock {(Get-Item .\Setup.exe).VersionInfo} -ErrorAction SilentlyContinue
+
+    if (-Not ($SetupFile)) {
+        Write-Error ('Problem Mounting the ISO File and getting setup version info')
+    } else {
+        $_SQLServerVersion = $setupfile.FileVersion.Split('.')[0]
+    }
+    
+    if (-Not $SQLInstallKey) {
+        Write-Error ('No Install key specified for SQL Server') -ErrorAction Stop -Verbose:$false
+    }
+    #endregion
+
+    #region Validate Service Account Creds
+    $_svcAccountCreds = Test-Credential -UserName $svcAccountCreds.UserName -Password $svcAccountCreds.Password
+    if (-Not ($_svcAccountCreds)) {
+        Write-Error ('Service Account Credentials Failed to Validate') -ErrorAction Stop
+    }
+    Write-Verbose ('{0}: VALIDATED - Service Account Credentials Validated')
+    #endregion
+
+    #region Validate SysAdmin AD Group
+    $_SysAdminGroup = Get-ADGroup -Filter "name -eq '$SysAdminAgroup'" -ErrorAction SilentlyContinue
+
+    if (-Not $_SysAdminGroup) {
+        Write-Error ('SysAdmin Group Not Found') -ErrorAction Stop
+    }
+
+    if ($_SysAdminGroup.Count -gt 1) {
+        Write-Error ('SysAdmin Group Search returned more than one Group') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Ready to use Sys Admin Group "{1}"' -f (get-date).tostring(),$_SysAdminGroup.Name)
+    #endregion
+
+    #region Validate File Share Group
+    if ($ConfigureFileShare) {
+        $_FileShareGroup = Get-ADGroup -Filter "name -eq '$FileShareGroup'" -ErrorAction SilentlyContinue
+
+        if (-Not $_FileShareGroup) {
+            Write-Error ('File Share Group Not Found') -ErrorAction Stop
+        }
+
+        if ($_FileShareGroup.Count -gt 1) {
+            Write-Error ('File Share Group Search returned more than one Group') -ErrorAction Stop
+        }
+
+        Write-Verbose ('{0}: VALIDATED - Ready to use Sys Admin Group "{1}"' -f (get-date).tostring(),$_FileShareGroup.Name)
+    }
+    #endregion
+
+    #region Configure File Share Access
+    if ($ConfigureFileShare) {
+        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-SMBShare -Name '$FileShareName' -Path '$InstallSQLDataDir' -ChangeAccess '$FileShareGroup' -FullAccess 'Domain Admins' -FolderEnumerationMode AccessBased")) -ErrorAction Stop
+        
+        $_folders = ($_SQLBackupDir.FullName,$_SQLUserDBDataDir.FullName,$_SQLUserDBLogsDir.FullName,$_SQLTempDBDataDir.FullName,$_SQLTempDBLogsDir.FullName,$_InstallSQLDataDir.FullName)
+
+        Invoke-Command -Session $_Session -ScriptBlock {
+            $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $_Group,'Modify','ContainerInherit,ObjectInherit','None','Allow'
+        }
+
+        $_folders += Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-ChildItem $SQLInstanceDir\MSSQL*\mssql* -Directory ")) -Erroraction SilentlyContinue
+        
+        #Add Rights to Folders
+        foreach ($_folder in $_folders) {
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$ACL = ' + "Get-ACL $_folder")) -ErrorAction SilentlyContinue
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$Acl.RemoveAccessRule(($Acl.Access | Where-Object {$_.IdentityReference -eq "Creator Owner"}))')) -ErrorAction SilentlyContinue
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$acl.AddAccessRule($AccessRule)')) -ErrorAction SilentlyContinue
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$Acl | Set-ACL $folder | Out-Null')) -ErrorAction Stop
+        }
+    }
+    #endregion
+
+    #region Create Install Script
+    $Script =  ('##Mount ISO Image from Provided Path' + [environment]::NewLine)
+    $Script += ('#Mount-DiskImage -ImagePath "{0}"' -f $SQLISOPath) + [environment]::NewLine
+    $Script += ('##Change working Directory to mounted ISO Drive') + [environment]::NewLine
+    $Script += ('#Set-Location ((Get-Volume | ?{$_.FileSystem -eq "CDFS"} | select -first 1).DriveLetter + ":")') + [environment]::NewLine
+    $Script += ('##Set environment variables for User/Group/Password' + [environment]::NewLine)
+    $Script += ('$User = "{0}"' -f $_svcAccountCreds.UserName) + [environment]::NewLine
+    $Script += ('$Group = "{0}"' -f $SysAdminGroupName) + [environment]::NewLine
+    $Script += ('$PW = '+"'{0}'" -f $_svcAccountCreds.GetNetworkCredential().Password) + [environment]::NewLine
+    $Script += ('$SPW = (Convertto-SecureString $PW -AsPlainText -Force)')
+    $Script += ('##Execute Install of Software with options' + [environment]::NewLine)
+    $Script += ('.\setup.exe /Quiet="True" /IndicateProgress /iAcceptSQLServerLicenseTerms /Action="Install" /UpdateEnabled="False" /TCPEnabled=1 /X86="False" /AGTSVCSTARTUPTYPE="Automatic" ')
+    $Script += (' /PID="{0}" ' -f $SQLInstallKey)
+    $Script += (' /Features={0} ' -f ($SQLServerFeatures -join ','))
+    $Script += (' /INSTANCENAME="{0}" ' -f $SQLInstanceName)
+    $Script += (' /INSTANCEID="{0}" ' -f $SQLInstanceName)
+    $Script += (' /INSTANCEDIR="{0}" ' -f $SQLInstanceDir)
+    $Script += (' /AGTSVCACCOUNT="{0}" ' -f $_svcAccountCreds.UserName)
+    $Script += (' /SQLSVCACCOUNT="{0}" ' -f $_svcAccountCreds.Username)
+    $Script += (' /SQLSYSADMINACCOUNTS="{0}" ' -f $SysAdminGroupName)
+    $Script += (' /INSTALLSQLDATADIR="{0}" ' -f $InstallSQLDataDir)
+    $SCript += (' /SQLBACKUPDIR="{0}" '-f $_SQLBackupDir.FullName) 
+    $Script += (' /SQLUSERDBDIR="{0}" ' -f $_SQLUserDBDataDir.FullName)
+    $Script += (' /SQLUSERDBLOGDIR="{0}" ' -f $_SQLUserDBLogsDir.FullName)
+    $Script += (' /SQLTEMPDBDIR="{0}" ' -f $_SQLTempDBDataDir.FullName)
+    $Script += (' /SQLTEMPDBLOGDIR="{0}" ' -f $_SQLTempDBLogsDir.FullName)
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBFILECOUNT={0}' -f $SQLTempDBFileCount)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBFILESIZE={0}' -f $SQLTempDBFileSize)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBFILEGROWTH={0}' -f $SQLTempDBFileGrowth)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBLOGFILESIZE={0}' -f $SQLTempDBLogFileSize)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBLOGFILEGROWTH={0}' -f $SQLTempDBLogFileGrowth)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLSVCINSTANTFILEINIT={0}' -f $SQLTempDBLogFileGrowth)}
+    if ($_SQLServerVersion -ge '2017') {
+        $Script += (' /SQLSVCPASSWORD=$SPW ' -f $_svcAccountCreds.GetNetworkCredential().password) 
+        $Script += (' /AGTSVCPASSWORD=$SPW ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine    
+    } else {
+        $Script += (' /SQLSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) 
+        $Script += (' /AGTSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine
+    }
+    if ($InstallMgmtStudio) {
+        ##Download and install SSMS
+        $Script += ('Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2014306 -OutFile {0}\SSMS.exe' -f $_SoftwareDir.FullName)
+        $Script += ('{0}\SSMS.exe /quiet' -f $_SoftwareDir.FullName) 
+    }
+
+    Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Set-Content -Value $Script -Path $ScriptsDir\Install.ps1 -Force")) -ErrorAction Stop    
+    #endregion
+
+    #region Execute Install Script
+    Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Content '$($_ScriptsDir.FullName)\Install.ps1' | Invoke-Expression"))
+    #endregion
 }
+
