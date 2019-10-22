@@ -2215,7 +2215,7 @@ function Set-SQLListener {
 
     #region Check SQL Server Service
     if ($RestartSQLServer) {
-        if (-Not (Invoke-Command -Session $_session -ScriptBlock ([scriptblock]::Create("Get-Service $SQLServiceName"))) {
+        if (-Not (Invoke-Command -Session $_session -ScriptBlock ([scriptblock]::Create("Get-Service $SQLServiceName")))) {
             Write-Error ('SQL Server Service "{0}" not found on server' -f $SQLServiceName) -ErrorAction Stop
         }
 
