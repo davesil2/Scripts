@@ -12,6 +12,20 @@ Refining the production scripts used to provision VM's.  The file "VM Provisioni
 
 Examples: [VM Provsioning Examples](https://github.com/davesil2/Scripts/wiki/VM-Provisioning-Examples)
 
+## SQL Server Installation
+Installing SQL Server Functions and required steps leading up to.  Many functions added to support this process, here's a few:
+
+* New-SQLServiceAccount
+* New-ADGroupForSQL
+* Install-SQLServer
+* Set-SSLforSQLServer
+* Set-SQLListener
+* Grant-SQLServiceRights
+* Enable-FSRMforSQL
+* ...and more
+
+Examples: [SQL Install Examples](https://github.com/davesil2/Scripts/wiki/SQL-Install-Examples)
+
 ## Global Functions
 These are functions that I've had use for over the years.  The Script is put together to be run at powershell startup with Inovke-Expression from the PSHome paths.
 
