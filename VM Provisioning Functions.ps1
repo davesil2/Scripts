@@ -740,7 +740,7 @@ function Add-VMtoDomain {
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false | Out-Null
+        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false -OutBuffer $null | Out-Null
         #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
         
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
@@ -1246,19 +1246,19 @@ function New-SSLCertificate {
 
     #region Submit Signing request
     if ($SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop | Out-Null
         Write-Verbose ('{0}: CSR Signed by Self')
     }
     else {
-        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop | Out-Null
         Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(), $caserver, $CAName)
     }
     #endregion
 
     #region Create PFX
     if ((Test-Path -Path "$OutputPath\Chain.pem") -and -Not $SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue -OutVariable $result
-    
+        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue | Out-Null
+        Write-Verbose ('{0}: PFX File Generated' -f (get-date).tostring())
     }
     #endregion
 
@@ -1411,6 +1411,9 @@ function Enable-WSMANwithSSL {
     else {
         Write-Verbose ('{0}: VALIDATED - PS Remoting Already Configured on Server "{1}"' -f (get-date).ToString(), $ServerName)
     }
+
+    #see if already listening on https
+    #<code needed>
 
     #endregion
 
@@ -1574,8 +1577,8 @@ function Install-IISServer {
             #Backup-WebConfiguration -Name 'BeforeRootMove'
             Stop-Service W3SVC,WAS,WMSVC -Force -ErrorAction Continue
 
-            New-Item ('{0}:\InetPub' -f $RootDriveLetter) -ItemType Container
-            Get-ACL -Path C:\InetPub | Set-ACL -Path ('{0}:\InetPub' -f $RootDriveLetter)
+            New-Item ('{0}:\InetPub' -f $RootDriveLetter) -ItemType Container | Out-Null
+            Get-ACL -Path 'C:\InetPub' | Set-ACL -Path ('{0}:\InetPub' -f $RootDriveLetter)
 
             $files = Get-ChildItem C:\InetPub -recurse
 
