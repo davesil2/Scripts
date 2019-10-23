@@ -21,427 +21,415 @@
 ###########################################################
 #>
 
-function Test-Ping
-{
-<#
-.Synopsis
-    Powershell Version of Ping
-.Description
-    This is meant to be used as an alternative to the ping option in an object result
-.Parameter Server
-    Specify the server or IP address
-.Parameter Count
-    Specify how many times it should ping (defautl is 1)
-.Example
-    Test-Ping -Server b1-pnetcs01 -count 5
-#>
+function Test-Ping {
+    [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$true)][String]$Server,
-        [Parameter(Mandatory=$false)][Int]$Count=4,
-        [Parameter(Mandatory=$false)][Switch]$Continuous=$false,
-        [Parameter(Mandatory=$false)][Switch]$Quiet=$false
+        # Server or ComputerName or IP address to ping
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Server,
+
+        # Number of pings to Server
+        [Parameter(Mandatory=$false)]
+        [Int]
+        $Count=4,
+
+        # Continuously Ping
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $Continuous,
+
+        # Return True or False for available
+        [Parameter(Mandatory=$false)]
+        [Switch]
+        $Quiet
     )
     
-    $result = @()
-
-    $IP = $null
-    $HostEntry = $Null
+    $_IP = $null
+    $_HostEntry = $Null
     
-    if (![System.Net.IPAddress]::TryParse($Server, [Ref] $IP))
-    {
-        try
-        {
-            $HostEntry = [net.dns]::GetHostEntry($Server)
+    if (-Not ([System.Net.IPAddress]::TryParse($Server, [Ref] $_IP))) {
+        try {
+            $_HostEntry = [net.dns]::GetHostEntry($Server)
+
+            Write-Verbose ('{0}: Resolved Server Name "{1}" to "{2}"' -f (get-date).tostring(),$Server,$_HostEntry.AddressList.IPAddressToString)
+        } Catch {
+            Write-Error ('Error Resolving the Host Name "{0}"' -f $Server) -ErrorAction Stop
         }
-        Catch
-        {
-            Write-Host 'Error Resolving the Host Name!' -ForegroundColor Red
+    } else {
+        Write-Verbose ('{0}: Provide Server appears to be an IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
+    }
+
+    if ($Quiet) {
+        $Count = 1
+        Write-Verbose ('{0}: Testing Ping of Server with quiet response' -f (get-date).tostring())
+    }
+    
+    $_array = @()
+    $_obj = New-Object PSObject
+
+    While ($Count) {
+        if ($_HostEntry) {
+            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_HostEntry.AddressList[0].IPAddressToString) | Select-Object @{N='HostName';E={$_HostEntry.HostName}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
+            Write-Verbose ('{0}: Pinging Host Name "{1}"' -f (get-date).tostring(),$_HostEntry.HostName)
+        }
+        else {
+            $_obj = ((New-Object System.Net.NetworkInformation.Ping).Send($_IP.IPAddressToString) | Select-Object @{N='HostName';E={$_IP.IPAddressToString}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
+            Write-Verbose ('{0}: Pinging IP Address "{1}"' -f (get-date).tostring(),$_IP.IPAddressToString)
+        }
+        
+        $_array += $_obj
+        if (-Not $Continuous) {
+            $count -= 1
+        }
+        if (-Not $Quiet) {
+            $_obj
         }
     }
 
-    if (!$Quiet)
-    {
-        $array = @()
-        $obj = New-Object PSObject
+    Write-Verbose ('{0}: Completed Count of Pings "{1}"' -f (get-date).tostring(),$Count)
 
-        While ($Count)
-        {
-            if ($HostEntry)
-            {
-                $obj = ((New-Object System.Net.NetworkInformation.Ping).Send($HostEntry.AddressList[0].IPAddressToString) | Select @{N='HostName';E={$HostEntry.HostName}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-            }
-            else
-            {
-                $obj = ((New-Object System.Net.NetworkInformation.Ping).Send($IP.IPAddressToString) | Select @{N='HostName';E={$IP.IPAddressToString}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-            }
-            $obj
-            
-            $array += $obj
-            if (!$Continuous)
-            {
-                $count -= 1
-            }
-        }
-    }
-    Else
-    {
-        if ($HostEntry)
-        {
-            $obj = ((New-Object System.Net.NetworkInformation.Ping).Send($HostEntry.AddressList[0].IPAddressToString) | Select @{N='HostName';E={$HostEntry.HostName}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-        }
-        else
-        {
-            $obj = ((New-Object System.Net.NetworkInformation.Ping).Send($IP.IPAddressToString) | Select @{N='HostName';E={$IP.IPAddressToString}},Address,Status,RoundTripTime,@{N='TTL';E={$_.options.TTL}},@{N='Buffer';E={$_.Buffer.Count}})
-        }
-
-        if ($obj.status -eq 'Success')
-        {
+    if ($Quiet) {
+        Write-Verbose ('{0}: Returning True/False for result')
+        if ($_obj.Status -eq 'Success') {
+            return $true
+        } else {
             return $true
         }
-        else
-        {
-            return $false
-        }
     }
+    
+
+    <#
+    .SYNOPSIS
+    
+    Object Oriented Ping Testing
+    
+    .DESCRIPTION
+    
+    Ping tests if the remote server or ip address is responding to ICMP Ping
+
+    Function supports:
+
+        * Quiet Mode (true/false result)
+        * Continuous Ping
+        * Limited Ping Count (Default: 4)
+
+    .EXAMPLE
+
+    Test-Ping -Server SERVER01 -count 5
+
+    .EXAMPLE
+
+    Test-Ping -Server 10.0.0.5
+
+    .EXAMPLE
+
+    Test-Ping -Server www.google.com -Quiet
+    #>
 }
 
-Function Test-Port
-{
-<#
-.Synopsis
-   Test-Port allows you to test if a port is accessible
-.Description
-   Using Test-Port you can find if a specified port is open on a machine.  The results are the original servername, Ipaddress, Port and if successful
-.Parameter Server
-   The server parameter is the name of the machine you want to test, either FQDN or NetBIOS name
-.Parameter Port
-   Use Port Parameter to specify the port to test
-.Parameter TimeOut
-   Use Timeout value to specify how long to wait for connection in milliseconds
-.Example
-   Test-Port -Server www.google.com -Port 80
-#>
+Function Test-Port {
+    [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$true)][String]$Server,
-        [Parameter(Mandatory=$true)][Int]$Port,
-        [Parameter(Mandatory=$False)][Int]$Timeout = 3000
+        # Name or IP of Server to test
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Server,
+
+        # Port Number to Test Server
+        [Parameter(Mandatory=$true)]
+        [Int]
+        $Port,
+
+        # Timeout Value if not connecting
+        [Parameter(Mandatory=$False)]
+        [Int]
+        $Timeout = 3000
     )
     
-    $IP = [net.dns]::Resolve($server).addresslist[0].ipaddresstostring      
+    $_IP = [net.dns]::Resolve($server).addresslist[0].ipaddresstostring      
 
-    if ($IP)
-    {    
+    if ($_IP) {    
         [void] ($socket = New-Object net.sockets.tcpclient)
         $Connection = $socket.BeginConnect($server,$Port,$null,$null)
         [void] ($Connection.AsyncWaitHandle.WaitOne($TimeOut,$False))
         
-        #
-        #[void] ($socket.connect($server,$port))
         $hash = @{Server=$Server
-                  IPAddress = $IP
+                  IPAddress = $_IP
                   Port=$Port
                   Successful=($socket.connected)}
                   
         $socket.Close()
         
-    }
-    else
-    {
+    } else {
         $hash = @{Server=$server
                   IPAddress = $null
                   Port=$Port
                   Successful=$null}
     }
     
-    return (new-object PSObject -Property $hash) | select Server,IPAddress,Port,Successful
-}
+    return (new-object PSObject -Property $hash) | Select-Object Server,IPAddress,Port,Successful
 
-Function Get-ActiveTCPListeners
-{
-<#
-.Synopsis
-    List the Active TCP Listeners like netstat
-.Description
-    This allows you to list all Port/Addresses on the machine that are listening.  Similar to using netstat but returned in an object array list that you can use
-.Example
-    Get-ActiveTCPListeners
-#>
+    <#
+    .SYNOPSIS
+
+    Test-Port allows you to test if a port is accessible
     
-    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPListeners() | Select Address,Port
+    .DESCRIPTION
+
+    Using Test-Port you can find if a specified port is open on a machine.  The results are the original servername, Ipaddress, Port and if successful
+    
+    .Parameter Server
+    The server parameter is the name of the machine you want to test, either FQDN or NetBIOS name
+    .Parameter Port
+    Use Port Parameter to specify the port to test
+    .Parameter TimeOut
+    Use Timeout value to specify how long to wait for connection in milliseconds
+    .Example
+    Test-Port -Server www.google.com -Port 80
+    #>
 }
 
-Function Get-ActiveTCPConnections
-{
-<#
-.Synopsis
+Function Get-ActiveTCPListeners{
+    
+    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPListeners() | Select-Object Address,Port
+
+    <#
+    .SYNOPSIS
+    
+    List the Active TCP Listeners like netstat
+    
+    .DESCRIPTION
+    
+    This allows you to list all Port/Addresses on the machine that are listening.  Similar to using netstat but returned in an object array list that you can use
+    
+    .EXAMPLE
+    
+    Get-ActiveTCPListeners
+    
+    #>
+}
+
+Function Get-ActiveTCPConnections{
+
+    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPConnections() | Select-Object LocalEndPoint,RemoteEndPoint,State
+    
+    <#
+    .SYNOPSIS
+    
     List the Active TCP Connections like netstat
-.Description
+    
+    .DESCRIPTION
+    
     This allows you to list all Port/Addresses on the machine that are Connected.  Similar to using netstat but returned in an object array list that you can use
-.Example
+    
+    .EXAMPLE
+
     Get-ActiveTCPConnections
-#>
 
-    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPConnections() | Select LocalEndPoint,RemoteEndPoint,State
+    #>
 }
 
-Function Get-ActiveUDPListeners
-{
-<#
-.Synopsis
+Function Get-ActiveUDPListeners {
+
+    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveUDPListeners() | Select-Object Address,Port
+
+    <#
+    .SYNOPSIS
+    
     List the Active UDP Listeners like netstat
-.Description
+    
+    .DESCRIPTION
+    
     This allows you to list all Port/Addresses on the machine that are Listening.  Similar to using netstat but returned in an object array list that you can use
-.Example
+    
+    .EXAMPLE
+    
     Get-ActiveUDPListeners
-#>
-
-    return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveUDPListeners() | Select Address,Port
+    
+    #>
 }
 
-Function Start-TCPListener
-{
-<#
-.Synopsis
-    Start-TCPListener allows you to start a TCP listener on a specified port
-.Description
-    Use this function in combination with the Test-Port function to verify if firewall ports are open between endpoints
-.Parameter Port
-    Use Port Parameter to specifiy the port the TCP listener will use
-.Parameter IPAddress
-    Use IP address Parameter to specify which IP address to listen on.  By default this function will listen on all IP addresses.
-.Example
-    Start-TCPListener -Port 4022
-#>
+Function Start-TCPListener {
+    [CmdletBinding()]
     Param
 	(
-		[Parameter(Mandatory=$true)]$Port,
-		[Parameter(Mandatory=$False)][String]$IPAddress = '0.0.0.0'
+        # Port to Listen on
+        [Parameter(Mandatory=$true)]
+        [ValidateRange(1,65535)]
+        [int]
+        $Port,
+
+        # IP Address to listen on
+        [Parameter(Mandatory=$False)]
+        [String]
+        $IPAddress = '0.0.0.0'
 	)
-	
-    if([int]::tryparse($Port,[ref]$null) -and [System.Net.IPAddress]::TryParse($IPAddress, [ref]$IPAddress))
-    {
-        if((1..65535) -contains $Port)
-        {    
-            Try
-            {
-                $Listener = New-Object Net.Sockets.TcpListener $IPAddress, $Port
-                $Listener.Start()
-                Write-Host "Press Enter to stop listener" -ForegroundColor Green
-                Read-Host | Out-Null
-                $Listener.Stop()
-                Write-Host "Listener stopped" -ForegroundColor Green 
-            }
-            Catch
-            {
-				Write-Host "Port is currently in use." -ForegroundColor Red
-            }
-        }
-        else
-        {
-            Write-Host "Port specificed is not within the valid range." -ForegroundColor Red
-            Write-Host "Please specifiy a port between 1 and 65535" -ForegroundColor Red
-        }
+    
+    if (-Not ([system.net.ipaddress]::TryParse($IPAddress, [ref]$_IPAddress))) {
+        Write-Error ('IP Address appears to be invalid')
     }
-    else
-    {
-        Write-Host "$Port is not a valid Port.  Please enter a numeric value between 1 and 65535" -ForegroundColor Red
+
+    $_Listener = New-Object Net.Sockets.TcpListener $_IPAddress,$Port -ErrorAction SilentlyContinue
+
+    if (-Not $_Listener) {
+        Write-Error ('Unable to create Listener on Port "{0}" with IP "{1}"' -f $Port, $IPAddress.ipaddresstostring)
     }
+    Write-Verbose ('{0}: Listener Created' -f (get-date).tostring())
+
+    $_Listener.Start()
+    Read-Host -Prompt 'Press Enter to Stop Listner...'
+    $_Listener.Stop()
+
+    Write-Verbose ('{0}: Listener Stopped' -f (get-date).tostring())
+
+    <#
+    .SYNOPSIS
+
+    Start-TCPListener allows you to start a TCP listener on a specified port
+    
+    .DESCRIPTION
+
+    Use this function in combination with the Test-Port function to verify if firewall ports are open between endpoints
+    
+    .EXAMPLE
+
+    Start-TCPListener -Port 4022
+    
+    #>
 }
 
-Function Get-ActivePSSessions
-{
-<#
-.Synopsis
-    Get-ActivePSSessions provides you with a list of active sessions on a specified host (default is current host)
-.Description
+Function Get-ActivePSSessions {
+    [CmdletBinding()]
+    Param
+	(
+        # Server to Get Active Power Shell Sessions
+        [Parameter(Mandatory=$false)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $Server = $env:computername,
+
+        # Credentials to use to connect to server
+        [Parameter(Mandatory=$false)]
+        [PSCredential]
+        $Credential
+	)
     
-.Parameter Server
-    Specify the Server to get active PowerShell Session on
-.Example
+    if ($Credential) {
+        #Test Credentials
+        if (-Not (Test-Credential -Username $Credential.UserName -Password $Credential.Password)) {
+            Write-Error ('Credentials are invalid') -ErrorAction Stop
+        }
+
+        if (-Not (Test-WSMan -ComputerName $Server -Credential $Credential -Authentication Kerberos -ErrorAction SilentlyContinue)) {
+            Write-Error ('unable to connect to wsman') -ErrorAction Stop
+        }
+
+        $_Sessions = Get-WSManInstance -ConnectionURI ("http://{0}:5985/wsman" -f $server) -ResourceURI Shell -Enumerate -Credential $Credential -ErrorAction SilentlyContinue    
+    } Else {
+        if (-Not (Test-WSMan -ComputerName $Server -Credential $Credential -Authentication Kerberos -ErrorAction SilentlyContinue)) {
+            Write-Error ('unable to connect to wsman') -ErrorAction Stop
+        }
+
+        $_Sessions = Get-WSManInstance -ConnectionURI ("http://{0}:5985/wsman" -f $server) -ResourceURI Shell -Enumerate -ErrorAction SilentlyContinue
+    }
+
+    if (-Not $_Sessions) {
+        Write-Error ('No Sessions Returned') -ErrorAction Stop
+    }
+
+    Return $_Sessions | Select-Object Name,Owner,ClientIP,ProcessID,State,MemoryUsed,ShellInactivity,ShellRunTime
+
+    <#
+    .SYNOPSIS
+
+    Get-ActivePSSessions provides you with a list of active sessions on a specified host (default is current host)
+    
+    .DESCRIPTION
+    
+    Funciton provides a list of active sessions on the current or remote server
+    
+    .EXAMPLE
+    
     Get-ActivePSSessions
 
-.Example
+    .EXAMPLE
+    
     Get-ActivePSSessions MyComputer.domain.local
 
-.Example
+    .EXAMPLE
+    
     Get-ActivePSSessions -Server MyComputer -Credential (get-credential)
 
-.Example
+    .EXAMPLE
+
     $Credential = Get-Credential DOMAIN\<samaccountname>
     Get-ActivePSSessions -Server MyComputer -Credential $Credential
-#>
-
-    Param
-	(
-		[Parameter(Mandatory=$false)]$Server=$env:computername,
-        [Parameter(Mandatory=$false)][System.Management.Automation.PSCredential]$Credential
-	)
     
-    if ($Credential)
-    {
-        #Test Credentials
-        if ($Credential.GetNetworkCredential().Domain -ne $Server)
-        {
-            $Authtype = 'Domain'
-            [void](Add-Type -AssemblyName System.DirectoryServices.AccountManagement)
-            $pc = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($Authtype)
-        }
-        Else
-        {
-            [void](Add-Type -AssemblyName System.DirectoryServices.AccountManagement)
-            $pc = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($Authtype,$Server)
-            $AuthType = 'Machine'
-        }
-
-        if ($pc.ValidateCredentials($Credential.GetNetworkCredential().UserName,$Credential.GetNetworkCredential().Password))
-        {
-            #Test Remote Host
-            if (Test-WSMan -ComputerName $server -Credential $Credential -Authentication Negotiate)
-            {
-                #Get Session info
-                $Sessions = Get-WSManInstance -ConnectionURI ("http://{0}:5985/wsman" -f $server) -ResourceURI Shell -Enumerate -Credential $Credential
-                
-                if ($Sessions)
-                {
-                    Return $Sessions	
-                }
-                Else
-                {
-                    Write-Host ("No active Sessions found on Host {0}" -f $server)
-                }
-            }
-            Else
-            {
-                Write-Error ("Failed testing Remote Host connection to {0} with user {1}" -f $Server, $Credential.UserName)
-                $sessions = $null
-            }
-        }
-        Else
-        {
-            Write-Error ("Credentials Invalid")
-        }
-    }
-    Else
-    {
-        If (Test-WSMan -ComputerName $server -Authentication Negotiate -ErrorAction SilentlyContinue)
-        {
-            $Sessions = Get-WSManInstance -ConnectionURI ("http://{0}:5985/wsman" -f $server) -ResourceURI Shell -Enumerate
-
-            if ($Sessions)
-            {
-                Return $Sessions	
-            }
-            Else
-            {
-                Write-Host ("No active Sessions found on Host {0}" -f $server)
-            }
-        }
-        else
-        {
-            Write-Error ("Failed testing Remote Host connection to {0} with Integrated User account {1}" -f $Server, $env:USERNAME)
-            $sessions = $null
-        }
-    }
+    #>
 }
 
-Function Get-Uptime
-{
-<#
-.Synopsis
-    Get-Uptime provides the uptime of the server you are currently on be default
-.Description
-    this function polls the Performance Counter System Up Time and get the current value returning as a timespan output
-.Parameter ComputerName
-    Specify the Server to get uptime for
-.Example
-    Get-Uptime
-
-.Example
-    Get-uptime MyComputer.domain.local
-
-.Example
-    Get-Uptime -ComputerName MyComputer
-#>
-
+Function Get-Uptime {
+    [CmdletBinding()]
     Param(
+        # Server to connect to and retrieve uptime
         [Parameter(Mandatory=$False)]
+        [ValidateNotNullOrEmpty()]
         [Alias('ServerName','Server')]
-        [String]$ComputerName="localhost"
+        [String]
+        $ComputerName="localhost",
+
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $TimeSpan
     )
 
-    $UpTime = New-Object System.Diagnostics.PerformanceCounter "System", "System Up Time", "", $ComputerName
-    [void]($Uptime.NextValue())
-    Return [TimeSpan]::FromSeconds($UpTime.NextValue()) | ft
+    # Get Uptime Value from Performance Counter
+    $_UpTime = New-Object System.Diagnostics.PerformanceCounter "System", "System Up Time", "", $ComputerName -ErrorAction SilentlyContinue
+    
+    if (-Not $_Uptime) {
+        Write-Error ('Unable to retrieve Performance counter from server "{0}"' -f $ComputerName) -ErrorAction Stop
+    }
+
+    # Dump initial value (generally is null)
+    [void]($_Uptime.NextValue())
+    
+    if ($TimeSpan) {
+        Return [TimeSpan]::FromSeconds($_UpTime.NextValue())
+    } else {
+        Return [TimeSpan]::FromSeconds($_UpTime.NextValue()) | Select-Object Days,Hours,Minutes,Seconds,milliseconds
+    }
+
+
+    <#
+    .SYNOPSIS
+
+    Get-Uptime provides the uptime of the server you are currently on be default
+    
+    .DESCRIPTION
+
+    this function polls the Performance Counter System Up Time and get the current value returning as a timespan output
+    
+    .EXAMPLE
+
+    Get-Uptime
+
+    .EXAMPLE
+
+    Get-uptime MyComputer.domain.local
+
+    .EXAMPLE
+
+    Get-Uptime -ComputerName MyComputer
+
+    .EXAMPLE
+
+    Get-Uptime -TimeSpan
+
+    #>
 }
 
-Function Get-LocalGroup
-{
-
-	<#
-		.SYNOPSIS
-		     Get local group account information from a local or remote system.
-			
-		.DESCRIPTION
-		     Enables an administrator to get local group account information from a local or remote system.
-			
-		.PARAMETER ComputerName
-			 This parameter is required.
-			 Specifies the target computers. Type the computer names or IP addresses(Comma separeted). Wildcard characters are not permitted.This parameter does not rely on Windows PowerShell remoting. You can use the ComputerName parameter even if your computer is not configured to run remote commands.
-		
-		.PARAMETER GroupName
-			 This parameter is required.
-			 Specifies the target Groups. Type the Group names(Comma separeted), Wildcard characters are permitted.
-			 
-		.EXAMPLE       
-
-		    Get-LocalGroup
-			
-			Description
-			-----------
-			Get all local groups from local computer
-			
-		.EXAMPLE       
-
-		    Get-LocalGroup MyGroup
-			
-			Description
-			-----------
-			Get local group MyGroup, from local computer
-			
-		.EXAMPLE       
-
-		    Get-LocalGroup -GroupName My*
-			
-			Description
-			-----------
-			Get ,from local computer, all local groups which their names stats with 'My' 	
-			
-		.EXAMPLE       
-
-		  	Get-LocalGroup -GroupName YourGroup -ComputerName Server1
-			
-			Description
-			-----------
-			Get local group YourGroup, from remote computer Server1	
-			
-		.EXAMPLE       
-
-		  	Get-LocalGroup -GroupName HouseofMontague,HouseofCapulet -ComputerName Romeo,Juliet 
-			
-			Description
-			-----------
-			Get local groups HouseofMontague & HouseofCapulet, from remote computers Romeo and Juliet	
-			
-		.EXAMPLE       
-
-		    Get-Contact d:\ServerList.txt | Get-LocalGroup 
-			
-			Description
-			-----------
-			Get a list computers from ServerList.txt file and get their local groups 
-			
-	#>
-	
+Function Get-LocalGroup {
 	[CmdletBinding()]
 	PARAM(
 		[Parameter(Position=1,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
@@ -454,21 +442,18 @@ Function Get-LocalGroup
 
         [Parameter(Mandatory=$false)]
         [alias()]
-        [System.Management.Automation.PSCredential]$Credential
+        [PSCredential]$Credential
 	)
 
-	Process{
+	Process {
 		Foreach($ComputerItem in $ComputerName){
-			Try{
-                if ($Credential)
-                {
+			Try {
+                if ($Credential) {
                     $Computer = New-Object System.DirectoryServices.DirectoryEntry "WinNT://$ComputerItem,Computer",$Credential.UserName,$Credential.GetNetworkCredential().Password
-                }
-                else
-                {
+                } else {
 				    $Computer = [adsi]"WinNT://$ComputerItem,Computer"
                 }				
-                if($Computer.Path){
+                if($Computer.Path) {
 					$Computer.Children| Where-Object{$_.SchemaClassName -eq "group" -and $_.name -like $GroupName} |foreach{
 						New-Object PSObject -Property @{
 							ComputerName = $ComputerItem
@@ -476,80 +461,82 @@ Function Get-LocalGroup
 							Description = $_.Properties.Description.Value
 						} | Select-Object ComputerName,GroupName,Description
 					}
-				}Else{
+				} Else {
 					Write-Error "Computer : $ComputerItem : The network path was not found."
 				}
-			}
-			Catch{
+			} Catch {
 				Write-Error "Computer : $ComputerItem : $_"
 			}
 		}
-	}
+    }
+    
+    <#
+    .SYNOPSIS
+            Get local group account information from a local or remote system.
+        
+    .DESCRIPTION
+            Enables an administrator to get local group account information from a local or remote system.
+        
+    .PARAMETER ComputerName
+            This parameter is required.
+            Specifies the target computers. Type the computer names or IP addresses(Comma separeted). Wildcard characters are not permitted.This parameter does not rely on Windows PowerShell remoting. You can use the ComputerName parameter even if your computer is not configured to run remote commands.
+    
+    .PARAMETER GroupName
+            This parameter is required.
+            Specifies the target Groups. Type the Group names(Comma separeted), Wildcard characters are permitted.
+            
+    .EXAMPLE       
+
+        Get-LocalGroup
+        
+        Description
+        -----------
+        Get all local groups from local computer
+        
+    .EXAMPLE       
+
+        Get-LocalGroup MyGroup
+        
+        Description
+        -----------
+        Get local group MyGroup, from local computer
+        
+    .EXAMPLE       
+
+        Get-LocalGroup -GroupName My*
+        
+        Description
+        -----------
+        Get ,from local computer, all local groups which their names stats with 'My' 	
+        
+    .EXAMPLE       
+
+        Get-LocalGroup -GroupName YourGroup -ComputerName Server1
+        
+        Description
+        -----------
+        Get local group YourGroup, from remote computer Server1	
+        
+    .EXAMPLE       
+
+        Get-LocalGroup -GroupName HouseofMontague,HouseofCapulet -ComputerName Romeo,Juliet 
+        
+        Description
+        -----------
+        Get local groups HouseofMontague & HouseofCapulet, from remote computers Romeo and Juliet	
+        
+    .EXAMPLE       
+
+        Get-Contact d:\ServerList.txt | Get-LocalGroup 
+        
+        Description
+        -----------
+        Get a list computers from ServerList.txt file and get their local groups 
+        
+	#>
 }
 
-Function Get-LocalGroupMembers
-{
-
-	<#
-		.SYNOPSIS
-		     Get local group members from a local or remote system.
-			
-		.DESCRIPTION
-		     Enables an administrator to get local group members from a local or remote system.
-			
-		.PARAMETER ComputerName
-			 This parameter is required.
-			 Specifies the target computers. Type the computer names or IP addresses(Comma separeted). Wildcard characters are not permitted.This parameter does not rely on Windows PowerShell remoting. You can use the ComputerName parameter even if your computer is not configured to run remote commands.
-		
-		.PARAMETER GroupName
-			 This parameter is required.
-			 Specifies the target Groups. Type the Group names(Comma separeted), Wildcard characters are not permitted.
-
-		.PARAMETER NestedGroup
-			 Gets the members in the specified group and in its nested groups.
- 
-			 			 
-		.EXAMPLE       
-
-		    Get-LocalGroupMembers Administrators
-			
-			Description
-			-----------
-			Get Administrators from local computer
-			
-		.EXAMPLE       
-
-		    Get-LocalGroupMembers -GroupName Administrators,Users
-			
-			Description
-			-----------
-			Get the members of Administrators & Users local groups, form local computer 	
-			
-		.EXAMPLE       
-
-		  	"Server1" | Get-LocalGroupMembers -GroupName YourGroup
-			
-			Description
-			-----------
-			Get the members of local group YourGroup, from remote computer Server1 	
-			
-		.EXAMPLE       
-
-		  	Get-LocalGroupMembers -GroupName HouseofMontague,HouseofCapulet -ComputerName Verona 
-			
-			Description
-			-----------
-			Get the members of local groups HouseofMontague & HouseofCapulet, from remote computer Verona	
-			
-		.EXAMPLE       
-
-		    Get-Contact d:\ServerList.txt | Get-LocalGroupMembers -GroupName Administrators | Format-Table
-			
-			Description
-			-----------
-			Get a list of computers from ServerList.txt file and get their local Administrators, display the results in table format 
-	#>
-	
+Function Get-LocalGroupMembers {
 	[CmdletBinding()]
 	PARAM(
 		[Parameter(Position=1,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
@@ -564,21 +551,18 @@ Function Get-LocalGroupMembers
 
         [Parameter(Mandatory=$false)]
         [alias()]
-        [System.Management.Automation.PSCredential]$Credential
+        [PSCredential]$Credential
 		
 	)
 	
 	Process{
-		Foreach($ComputerItem in $ComputerName){
-			Foreach($GroupItem in $GroupName){
-				Try{
+		Foreach($ComputerItem in $ComputerName) {
+			Foreach($GroupItem in $GroupName) {
+				Try {
 			        Write-Verbose "Getting group $GroupItem on computer $ComputerItem"
-                    if ($Crednetial)
-                    {
+                    if ($Crednetial) {
                         $Group = New-Object System.DirectoryServices.DirectoryEntry "WinNT://$ComputerItem/$GroupItem,group",$Credential.UserName,$Credential.GetNetworkCredential().Password
-                    }
-                    else
-                    {
+                    } else {
 				        $Group = [ADSI]"WinNT://$ComputerItem/$GroupItem,group"
                     }						
 
@@ -586,10 +570,11 @@ Function Get-LocalGroupMembers
 					$Group.Members()| ForEach-Object {
 						if(($_.GetType().InvokeMember("Adspath", 'GetProperty', $null, $_, $null)) -match $ComputerItem){
 								$UserType = "Local"
-						}Else{
+						} Else {
 								$UserType = "Domain"
-						}
-						Try{
+                        }
+                        
+						Try {
 							New-Object PSObject -Property @{
 								ComputerName = $ComputerItem
 								GroupName = $GroupItem
@@ -597,29 +582,89 @@ Function Get-LocalGroupMembers
 								UserType = $UserType
 								ObjectType = $_.GetType().InvokeMember("Class", 'GetProperty', $null, $_, $null) 
 							} | Select-Object ComputerName,GroupName,Identity,UserType,ObjectType,@{Name='Date';Expression={Get-Date}}
-						}
-						Catch{
+						} Catch {
 							Write-Error "Computer : $ComputerItem : $_"
 						}
 					}
-				}
-				Catch{
+				} Catch{
 					Write-Error "Computer : $ComputerItem : $_"
 				}					
 			}
 		}
-	}
+    }
+    
+    <#
+    .SYNOPSIS
+            Get local group members from a local or remote system.
+        
+    .DESCRIPTION
+            Enables an administrator to get local group members from a local or remote system.
+        
+    .PARAMETER ComputerName
+            This parameter is required.
+            Specifies the target computers. Type the computer names or IP addresses(Comma separeted). Wildcard characters are not permitted.This parameter does not rely on Windows PowerShell remoting. You can use the ComputerName parameter even if your computer is not configured to run remote commands.
+    
+    .PARAMETER GroupName
+            This parameter is required.
+            Specifies the target Groups. Type the Group names(Comma separeted), Wildcard characters are not permitted.
+
+    .PARAMETER NestedGroup
+            Gets the members in the specified group and in its nested groups.
+
+                        
+    .EXAMPLE       
+
+        Get-LocalGroupMembers Administrators
+        
+        Description
+        -----------
+        Get Administrators from local computer
+        
+    .EXAMPLE       
+
+        Get-LocalGroupMembers -GroupName Administrators,Users
+        
+        Description
+        -----------
+        Get the members of Administrators & Users local groups, form local computer 	
+        
+    .EXAMPLE       
+
+        "Server1" | Get-LocalGroupMembers -GroupName YourGroup
+        
+        Description
+        -----------
+        Get the members of local group YourGroup, from remote computer Server1 	
+        
+    .EXAMPLE       
+
+        Get-LocalGroupMembers -GroupName HouseofMontague,HouseofCapulet -ComputerName Verona 
+        
+        Description
+        -----------
+        Get the members of local groups HouseofMontague & HouseofCapulet, from remote computer Verona	
+        
+    .EXAMPLE       
+
+        Get-Contact d:\ServerList.txt | Get-LocalGroupMembers -GroupName Administrators | Format-Table
+        
+        Description
+        -----------
+        Get a list of computers from ServerList.txt file and get their local Administrators, display the results in table format 
+	#>
 }
 
-Function Get-GroupMemberShip
-{
+Function Get-GroupMemberShip {
     Param(
         [Parameter(Mandatory=$true)]
         [Alias()]
-        [String]$GroupName,
+        [String]
+        $GroupName,
+
         [Parameter(Mandatory=$false)]
         [Alias()]
-        [String]$ParentGroup
+        [String]
+        $ParentGroup
     )
 
     $ds = New-Object System.DirectoryServices.DirectorySearcher
@@ -627,156 +672,140 @@ Function Get-GroupMemberShip
 
     $de = $ds.FindOne().GetDirectoryEntry()
 
-    if ($de)
-    {
+    if ($de) {
         $Array = @()
         $Members = $de.Member
 
-        foreach ($member in $members)
-        {
-            if ($member)
-            {
+        foreach ($member in $members) {
+            if ($member) {
                 $member = [adsi]('LDAP://' + $member)
 
-                if ($member.objectClass.contains('person'))
-                {
+                if ($member.objectClass.contains('person')) {
                     if ($ParentGroup -and $ParentGroup.Substring(0,1) -ne '/')
                     {
                         $ParentGroup = '/' + $ParentGroup
                     }
                     
-                    
                     $array += New-Object PSObject -Property @{Name=$member.displayName.toString();Group=$GroupName;GroupPath=($ParentGroup + '/' + $GroupName);sAMAccountName=$Member.samaccountname.toString();AccountDisabled=$member.invokeGet('AccountDisabled').ToString()}    
                 }
 
-                if ($member.objectClass.contains('group'))
-                {
+                if ($member.objectClass.contains('group')) {
                     $array += Get-GroupMemberShip -GroupName $member.samaccountname -ParentGroup $GroupName
                 }
-            }
-            Else
-            {
+            } Else {
                 Write-Warning ("Member Value Returned is null!")
             }
         }
 
         Return $array
-    }
-    else
-    {
+    } else {
         Write-Warning ("Group {0} was not found in Active Directory!" -f $GroupName)
     }
 }
 
-Function Add-LocalGroupMembers
-{
+Function Add-LocalGroupMembers {
     PARAM(
 		[Parameter(Position=1,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
 		[alias("CN","__SERVER","Computer","IPAddress")]
-		[STRING[]]$ComputerName = $ENV:COMPUTERNAME,
+        [STRING[]]
+        $ComputerName = $ENV:COMPUTERNAME,
 		
 		[Parameter(Position=0,Mandatory=$True)]
 		[alias("Grp","Group","GroupName")]
-		[STRING]$LocalGroupName,
+        [STRING]
+        $LocalGroupName,
 
         [Parameter(Mandatory=$True)]
         [Alias("User")]
-        [String]$AccountObject,
+        [String]
+        $AccountObject,
 
         [Parameter(Mandatory=$false)]
         [Alias("Local")]
-        [Switch]$AccountObjectIsLocal,
+        [Switch]
+        $AccountObjectIsLocal,
 
         [Parameter(Mandatory=$false)]
         [Alias("IsUser")]
-        [Switch]$AccountObjectIsUser,
+        [Switch]
+        $AccountObjectIsUser,
 
         [Parameter(Mandatory=$false)]
         [alias("Cred")]
-        [System.Management.Automation.PSCredential]$Credential
+        [PSCredential]
+        $Credential
 	)
     
-    ForEach ($Computer in $ComputerName)
-    {
-        If (!$Credential)
-        {
+    ForEach ($Computer in $ComputerName) {
+        If (!$Credential) {
             $Group = New-Object System.DirectoryServices.DirectoryEntry "WinNT://$Computer/$LocalGroupName,group"
-        }
-        Else
-        {
+        } Else {
             $Group = New-Object System.DirectoryServices.DirectoryEntry "WinNT://$Computer/$LocalGroupName,group",$Credential.UserName,$Credential.GetNetworkCredential().Password
         }
 
-        If ($AccountObjectIsUser)
-        {
+        If ($AccountObjectIsUser) {
             $AccountObjectType = 'User' 
-        }
-        Else
-        {
+        } Else {
             $AccountObjectType = 'Group'
         }
 
-        if ($AccountObjectIsLocal)
-        {
+        if ($AccountObjectIsLocal) {
             $Account = [adsi]"WinNT://$Computer/$AccountObject,$AccountObjectType"
-        }
-        Else
-        {
+        } Else {
             $Account = [adsi]"WinNT://$($ENV:USERDOMAIN)/$AccountObject,$AccountObjectType"
         }
 
-        if ($Account)
-        {
-            try
-            {
+        if ($Account) {
+            try {
                 $Group.Add($Account.ADSPath)
                 Write-Host ("Account {0} was added to Group {1} successfully!" -f $AccountObject,$LocalGroupName)
-            }
-            catch
-            {
+            } catch {
                 Write-Warning ("An Error occured adding Account {0} to Group {1}!" -f $AccountObject,$LocalGroupName)
             }
-        }
-        else
-        {
+        } else {
             Write-Warning ("Account {0} was not Added to Group {1} because the Account could not be found!" -f $AccountObject,$LocalGroupName)
         }
     }
 }
 
-Function Add-MicrosoftUpdates
-{
-    Param()
-
-    try
-    {
+Function Add-MicrosoftUpdates {
+    try {
         $ServiceManager = New-Object -ComObject Microsoft.Update.ServiceManager
         $ServiceManager.ClientApplicationID = "Microsoft Update"
 
         [void]($ServiceManager.AddService2("7971f918-a847-4430-9279-4a52d1efe18d",7,""))
     
         Write-Host ("Successfully added Microsoft Update Service!")
-    }
-    Catch
-    {
+    } Catch {
         Write-Warning ("Failed to add Microsoft Update Service!")
     }
 }
 
-Function Get-SQLIndexFragmentation
-{
+Function Get-SQLIndexFragmentation {
     Param(
+        # SQL Servers to Get Fragmentation From
         [Parameter(Mandatory=$False)]
-        [String[]]$SQLServers = 'localhost',
+        [ValidateNotNullOrEmpty()]
+        [String[]]
+        $SQLServers = 'localhost',
 
+        # Indexes to get Fragmentation of
         [Parameter(Mandatory=$False)]
-        [String[]]$Indexes = '*',
+        [ValidateNotNullOrEmpty()]
+        [String[]]
+        $Indexes = '*',
 
+        # Tables to get Indexes From
         [Parameter(Mandatory=$False)]
-        [String[]]$Tables = '*',
+        [ValidateNotNullOrEmpty()]
+        [String[]]
+        $Tables = '*',
         
+        # Databases to get Tables From
         [Parameter(Mandatory=$False)]
-        [String[]]$Databases = '*'
+        [ValidateNotNullOrEmpty()]
+        [String[]]
+        $Databases = '*'
     )
 
     Try
@@ -786,50 +815,44 @@ Function Get-SQLIndexFragmentation
 
         $Array = @()
 
-        ForEach ($SQLServer in $SQLServers)
-        {
+        ForEach ($SQLServer in $SQLServers) {
             ##TODO: Test Server
 
             ##Connect to SQL Server Instance
             $SMO = New-Object Microsoft.SQLServer.Management.SMO.Server $SQLServer
 
             ##Get Server Databases
-            If (($Databases | Out-String).contains('*') -and $Databases.Count -eq 1)
-            {
+            If (($Databases | Out-String).contains('*') -and $Databases.Count -eq 1) {
                 $DBs = $SMO.Databases
-            }
-            Else
-            {
-                $DBs = $Databases | foreach{try {$SMO.Databases[$_]} Catch {$null}} | Where {$_ -ne $null}
+            } Else {
+                $DBs = $Databases | ForEach-Object {try {$SMO.Databases[$_]} Catch {$null}} | Where-Object {$_ -ne $null}
             }
 
-            ForEach ($DB in $DBs)
-            {
-                If (($Tables | Out-String).Contains('*') -and $Tables.Count -eq 1)
-                {
+            ForEach ($DB in $DBs) {
+                If (($Tables | Out-String).Contains('*') -and $Tables.Count -eq 1) {
                     $Tbls = $DB.Tables
-                }
-                Else
-                {
-                    $Tbls = $Tables | ForEach {Try {$DB.Tables[$_]} Catch {$null}} | Where {$_ -ne $null}
+                } Else {
+                    $Tbls = $Tables | ForEach-Object {Try {$DB.Tables[$_]} Catch {$null}} | Where-Object {$_ -ne $null}
                 }
 
-                ForEach ($Table in $Tbls)
-                {
-                    If (($Indexes | Out-String).Contains('*') -and $Indexes.Count -eq 1)
-                    {
+                ForEach ($Table in $Tbls) {
+                    If (($Indexes | Out-String).Contains('*') -and $Indexes.Count -eq 1) {
                         $Indxs = $Table.Indexes
-                    }
-                    Else
-                    {
-                        $Indxs = $Indexes | ForEach {Try {$Tables.Indexes[$_]} Catch {$Null}} | Where {$_ -ne $null}
+                    } Else {
+                        $Indxs = $Indexes | ForEach-Object {Try {$Tables.Indexes[$_]} Catch {$Null}} | Where-Object {$_ -ne $null}
                     }
 
-                    ForEach ($Index in $Indxs)
-                    {
-                        $Fragmentation = $Index.EnumFragmentation() | select *
+                    ForEach ($Index in $Indxs) {
+                        $Fragmentation = $Index.EnumFragmentation() | Select-Object *
 
-                        $obj = New-Object PSObject -Property @{SQLServer=$SQLServer; Database=$DB.Name; Table=$Table.Name; TableRowCount=$Table.RowCount; Index=$Index.Name; Fragmentation=$Fragmentation.AverageFragmentation}
+                        $obj = [PSCustomObject]@{
+                            SQLServer=$SQLServer;
+                            Database=$DB.Name;
+                            Table=$Table.Name;
+                            TableRowCount=$Table.RowCount; 
+                            Index=$Index.Name; 
+                            Fragmentation=$Fragmentation.AverageFragmentation
+                        }
 
                         $obj
 
@@ -838,110 +861,100 @@ Function Get-SQLIndexFragmentation
                 }
             }
         }
-    }
-    Catch
-    {
+    } Catch {
         Write-Warning ("Process Ended - An Error occured: {0}" -f $Error[0].Exception)   
     }
 }
 
-Function Test-Resolve
-{
+Function Test-Resolve {
+    [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$True)]
         [Alias('DNSName','Server')]
-        [String]$ComputerName,
+        [String]
+        $ComputerName,
 
         [Parameter(Mandatory=$False)]
-        [Switch]$Quiet
+        [Switch]
+        $Quiet
     )
 
-    Try
-    {
-        $result = [Net.DNS]::Resolve($ComputerName)
-        If ($Quiet)
-        {
-            Return $True
-        }
-        Else
-        {
-            Return $result
+    $_result = try {[net.dns]::Resolve($ComputerName)} catch {}
+
+    if (-Not $_result) {
+        if ($Quiet) {
+            return $false
+        } else {
+            Write-Error ('{0} was not resolvable' -f $ComputerName) -ErrorAction Stop
         }
     }
-    Catch
-    {
-        if ($Quiet)
-        {
-            Return $False
-        }
-        Else
-        {
-            Write-Host ("{0} was not resolvable" -f $ComputerName)
-        }
+
+    if ($Quiet) {
+        return $true
     }
+
+    return $_result
 }
 
-Function Speak-Phrase
-{
+Function Play-Phrase {
+    [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$True)]
-        [String]$Phrase
+        [ValidateNotNullOrEmpty()]
+        [String]
+        $Phrase
     )
 
-    $Speaker = New-Object -ComObject SAPI.SpVoice
-    [Void]($Speaker.Speak($Phrase))
+    $_Speaker = New-Object -ComObject SAPI.SpVoice -ErrorAction Stop
+    [Void]($_Speaker.Speak($Phrase))
 }
 
-Function Get-WWN
-{
+Function Get-WWN {
+    [CmdletBinding()]
     Param(
+        # Computer to get WWN FC infomation from
         [Parameter(Mandatory=$False)]
-        [String]$ComputerName=($env:ComputerName),
+        [ValidateNotNullOrEmpty()]
+        [String]
+        $ComputerName=($env:ComputerName),
 
+        # Credential to connect to computer
         [Parameter(Mandatory=$false)]
         [Alias('Cred')]
-        [System.Management.Automation.PSCredential]$Credential
+        [PSCredential]
+        $Credential
     )
-    try
-    {
-        $Class = 'MSFC_FibrePortNPIVAttributes'
-        if ($Credential)
-        {
-            #$os = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $ComputerName -Credential $Credential
-        
-            $Result = Get-WmiObject -Class $Class -Namespace 'root/WMI' -ComputerName $ComputerName -Credential $Credential
-        }
-        else
-        {
-            #$os = Get-WmiObject -Class Win32_OperatingSystem -ComputerName $ComputerName
 
-            $Result = Get-WmiObject -Class $Class -Namespace 'root/WMI' -ComputerName $ComputerName
-        }
+    $_Class = 'MSFC_FibrePortNPIVAttributes'
+    $_NameSpace = 'root/WMI'
 
-
-        $array = @()
-
-        if ($result)
-        {
-            ForEach ($WWN in $result)
-            {
-                
-                $obj = New-Object psobject -Property @{ComputerName=$Computername; WWPN=($wwn.wwpn | %{("{0:x}" -f $_).PadLeft(2,'0')}) -join ':'; WWNN=($wwn.wwnn | %{("{0:x}" -f $_).PadLeft(2,'0')}) -join ':'}
-                
-                $array += $obj
-            }
-
-            return $array
-        }
+    if ($Credential) {
+        $_result = Get-WmiObject -Class $_Class -Namespace $_NameSpace -ComputerName $ComputerName -Credential $Credential -ErrorAction SilentlyContinue
+    } else {
+        $_result = Get-WmiObject -Class $_Class -Namespace $_NameSpace -ComputerName $ComputerName -ErrorAction SilentlyContinue
     }
-    catch
-    {
-        
+
+    if (-Not $_result) {
+        Write-Error ('No Result returned from system for class "{0}"' -f $_Class) -ErrorAction Stop
     }
+
+    $_Array = @()
+
+    ForEach ($WWN in $result) {  
+        $_obj = [PSCustomObject]@{
+            ComputerName=$ComputerName;
+            WWPN=($wwn.wwpn | ForEach-Object {("{0:x}" -f $_).PadLeft(2,'0')}) -join ':'; 
+            WWNN=($wwn.wwnn | ForEach-Object {("{0:x}" -f $_).PadLeft(2,'0')}) -join ':';
+        }
+        
+        $_Array += $_obj
+    }
+
+    return $_Array
 }
 
-function New-SymbolicLink
-{
+function New-SymbolicLink {
+    [CmdletBinding()]
     param
     (
         [Parameter(Mandatory=$true)]
@@ -955,8 +968,7 @@ function New-SymbolicLink
 
     )
     
-    if(!([bool]((whoami /groups) -match "S-1-16-12288") ))
-    {
+    if(!([bool]((whoami /groups) -match "S-1-16-12288") )) {
         Write-Warning 'Must be an admin'
         break
     }
@@ -971,71 +983,82 @@ function New-SymbolicLink
     [SymbolicLink.Creator]::CreateSymbolicLink($MirroredPath, $OriginalPath, $Flags)
 }
 
-function Get-RandomPassword 
-{	
-	param(
-		[int]$length = 12,
-		[string]$characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%&/()=?*+#_',
-        [boolean]$Complex = $true
-	)	
-	if ($Complex)
-    {
-        $isComplex = $false
-    }
-    else
-    {
-        $isComplex = $true
+function Get-RandomPassword {
+    [CmdletBinding()]
+    Param(
+        # Length of password
+        [parameter(Mandatory=$false)]
+        [int]
+        $length = 24,
+        
+        # Characters to use in password
+        [parameter(Mandatory=$false)]
+        [string]
+        $Characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$%&/()=?*+#_',
+
+        # Require 1 Upper, 1 Lower, 1 number and 1 symbol
+        [parameter(Mandatory=$false)]
+        [boolean]
+        $Complex = $True
+    )
+
+    $_pwd = $null
+    $_loop = $true
+    $_Chars = ($Characters.ToCharArray() | Select-Object -Unique) -join ''
+
+    if ($_Chars.length -lt $length -and $Complex) {
+        Write-Warning ('Using "{0}" characters for password leave less than "{1}" to Create Complexity to that will be ignored' -f $_Chars,$length)
+        $Complex = $false
     }
 
-    while (!$isComplex)
-    {
-        # select random characters
-	    $random = 1..$length | ForEach-Object { Get-Random -Maximum $characters.length }
-	    # output random pwd
-	    $private:ofs=""
-	    $pwd = [String]$characters[$random]
-        
-        if ($pwd -match [regex]'[A-Za-z]' -and $pwd -match [regex]'[0-9]' -and $pwd -match [regex]'[!$%&/()=?*+#_]')
-        {
-            $isComplex = $true
+    if ($Complex -and $_Chars.length -ge $length) {
+        if ($_Chars -match [regex]'[A-Za-z]' -and $_Chars -match [regex]'[0-9]' -and $_Chars -match [regex]'[!$%&/()=?*+#_]') {
+            $Complex = $false
+
+            Write-Verbose ('{0}: Using Complexity to Generate Password (requiring 1 Char, 1 Number, 1 Symbol)' -f (get-date).tostring())
         }
     }
 
-    return $pwd
-    
-}
+    while ($_loop) {
+        $_pwd = ([string]$_Chars[(1..$length | ForEach-Object {Get-Random -Maximum $_Chars.Length})]).Replace(' ','')
+        if ($_pwd -match [regex]'[A-Za-z]' -and $_pwd -match [regex]'[0-9]' -and $_pwd -match [regex]'[!$%&/()=?*+#_]') {
+            $_loop = $false
+        }
+        if (-Not $Complex) {
+            $_loop = $false
+        }
+    }
 
-function Set-PageFile
-{
+    Write-Verbose ('{0}: Password Generated' -f (get-date).tostring())
+    return $_pwd
+
     <#
     .SYNOPSIS
-        Sets Page File to custom size
- 
+
+    Create a random password
+
     .DESCRIPTION
-        Applies the given values for initial and maximum page file size.
- 
-    .PARAMETER Path
-        The page file's fully qualified file name (such as C:\pagefile.sys)
- 
-    .PARAMETER InitialSize
-        The page file's initial size [MB]
- 
-    .PARAMETER MaximumSize
-        The page file's maximum size [MB]
- 
-    .EXAMPLE
-        C:\PS> Set-PageFile "C:\pagefile.sys" 4096 6144
+
+    Generate a Random password with configurable Characters, length and complexity requirements
+
     #>
- 
+}
+
+function Set-PageFile {
     [CmdletBinding(SupportsShouldProcess=$True)]
     param (
+        # The page file's fully qualified file name (such as C:\pagefile.sys)
         [Parameter(Mandatory=$true,Position=0)]
         [ValidateNotNullOrEmpty()]
         [String]
         $Path,
+
+        # The page file's initial size [MB]
         [Parameter(Mandatory=$true,Position=1)]
         [ValidateNotNullOrEmpty()]
         [Int]
+
+        # The page file's maximum size [MB]
         $InitialSize,
         [Parameter(Mandatory=$true,Position=2)]
         [ValidateNotNullOrEmpty()]
@@ -1051,49 +1074,57 @@ function Set-PageFile
  
     # Disables automatically managed page file setting first
     $ComputerSystem = Get-WmiObject -Class Win32_ComputerSystem -EnableAllPrivileges
-    if ($ComputerSystem.AutomaticManagedPagefile)
-    {
+
+    if ($ComputerSystem.AutomaticManagedPagefile) {
         $ComputerSystem.AutomaticManagedPagefile = $false
-        if ($PSCmdlet.ShouldProcess("$($ComputerSystem.Path.Server)", "Disable automatic managed page file"))
-        {
+        if ($PSCmdlet.ShouldProcess("$($ComputerSystem.Path.Server)", "Disable automatic managed page file")) {
             $ComputerSystem.Put()
         }
     }
  
     $CurrentPageFile = Get-WmiObject -Class Win32_PageFileSetting
-    if ($CurrentPageFile.Name -eq $Path)
-    {
+    if ($CurrentPageFile.Name -eq $Path) {
         # Keeps the existing page file
-        if ($CurrentPageFile.InitialSize -ne $InitialSize)
-        {
+        if ($CurrentPageFile.InitialSize -ne $InitialSize) {
             $CurrentPageFile.InitialSize = $InitialSize
             $Modified = $true
         }
-        if ($CurrentPageFile.MaximumSize -ne $MaximumSize)
-        {
+
+        if ($CurrentPageFile.MaximumSize -ne $MaximumSize) {
             $CurrentPageFile.MaximumSize = $MaximumSize
             $Modified = $true
         }
-        if ($Modified)
-        {
-            if ($PSCmdlet.ShouldProcess("Page file $Path", "Set initial size to $InitialSize and maximum size to $MaximumSize"))
-            {
+
+        if ($Modified) {
+            if ($PSCmdlet.ShouldProcess("Page file $Path", "Set initial size to $InitialSize and maximum size to $MaximumSize")) {
                 $CurrentPageFile.Put()
             }
         }
-    }
-    else
-    {
+    } else {
         # Creates a new page file
-        if ($PSCmdlet.ShouldProcess("Page file $($CurrentPageFile.Name)", "Delete old page file"))
-        {
+        if ($PSCmdlet.ShouldProcess("Page file $($CurrentPageFile.Name)", "Delete old page file")) {
             $CurrentPageFile.Delete()
         }
-        if ($PSCmdlet.ShouldProcess("Page file $Path", "Set initial size to $InitialSize and maximum size to $MaximumSize"))
-        {
+
+        if ($PSCmdlet.ShouldProcess("Page file $Path", "Set initial size to $InitialSize and maximum size to $MaximumSize")) {
             Set-WmiInstance -Class Win32_PageFileSetting -Arguments @{Name=$Path; InitialSize = $InitialSize; MaximumSize = $MaximumSize}
         }
     }
+
+    <#
+    .SYNOPSIS
+    
+    Sets Page File to custom size
+ 
+    .DESCRIPTION
+    
+    Applies the given values for initial and maximum page file size.
+ 
+    .EXAMPLE
+
+    C:\PS> Set-PageFile "C:\pagefile.sys" 4096 6144
+
+    #>
 }
 
 Function Create-MyPSDrive
@@ -1288,242 +1319,322 @@ function Restart-RemoteService
     }
 }
 
-function Create-Certificate
-{
-    <#
-    .SYNOPSIS
-    Create's SSL Certificates using openssl and certreq
-
-    .DESCRIPTION
-    Create-Certificate uses either local or provided path of openssl to create the csr and private key for requesting to certificate authority.
-
-    Natively the tool also calls out to the windows certificate authority using certreq to make a query using specified template and Certificate authority all storing the results in a specified location/folder including the name of the certificate.
-    
-    .PARAMETER Name
-    This should be the name of the system.  I many cases this could simply be the server name.  This value is used to derive the FQDN along with the domain name.
-    
-    .PARAMETER Domain
-    Domain is the domain that will be used for DNS.  Name + domain = Fully Qualified domain name.
-    
-    .PARAMETER CommonName
-    Default value is set to the name above, but can be specified as something else if desired.
-    
-    .PARAMETER IP
-    Default valued is specified as the IP that resolves to the FQDN created by Name + Domain
-    
-    .PARAMETER SubjectAlternativeNames
-    Value should be an Array.  If no type is specified the default type is used as DNS.  'DNS: server.domain.com' could be used or 'IP: 192.168.0.1' could be used to specify the type.  If just provided as an array of string's, the default will be DNS type.
-    
-    .PARAMETER CertificateAuthorityServer
-    The name of the server or ip address of the server that the request will be submitted to.  You can find the Certificate Authorities available in your environment with certutil -ADCA command.
-    
-    .PARAMETER CertificateAuthorityName
-    The Certificate authority name as defined on the server.  You can find the Certificate Authorities available in your environment with certutil -ADCA command.
-    
-    .PARAMETER CertificateTemplateName
-    The name of the Template on the Certificate Authority.  A list of templates in your CA can be found with certutil -ADTemplate command.
-    
-    .PARAMETER CertificatePassword
-    The password used to create the pfx file.  the default is "testpassword" without the quotes.
-    
-    .PARAMETER CertificateChainPath
-    Path to the Cetificate Authority Trust Chain.  If no value is specified, the default will attempt to download the chain using the https://<server>/certsrv/certnew.p7b file.
-    
-    .PARAMETER Country
-    Specific Country for certificate request, default is US
-    
-    .PARAMETER State
-    State for certificate request, Default is IL.
-    
-    .PARAMETER Locality
-    State or provinece of certificate
-    
-    .PARAMETER Organization
-    The Organization the certificate is for.
-    
-    .PARAMETER OrganizationalUnit
-    This can be the department or group the certificate is for or who is responsible for administering the certificate.
-    
-    .PARAMETER OpenSSLPath
-    Path to openssl.  The default path is whatever is defined in Get-Command openssl*.  If no path is found, the script will error out.
-    
-    .PARAMETER OutputPath
-    Default Path is the current directory put the name as specified in the function call.  Otherwise you can specifiy the location ot put all of the generated file.
-    
-    .PARAMETER OverWrite
-    This will remove all files in the directory of the output path is set to true and generate a new certificate.
-    
-    .PARAMETER Regenerate
-    This will move all existing files except the cfg file to a backup directory in the output folder if it already exists and then create the key and other objects.
-    
-    .PARAMETER UseDefaultSANs
-    Default value is true where it will use the name, fqdn and IP address for the Subject Alternative names this includes using the IP address as DNS as well since IE has an issue recognizing an IP address as the IP type.
-    
-    .EXAMPLE
-    Create-Certificate -Name server
-
-    .EXAMPLE
-    Create-Certificate -Name server -Domain mydomain.com -IP 192.168.2.2
-
-    .EXAMPLE
-    Create-Certificate -Name server -Domain mydomain.com -IP 192.168.2.2 -SubjectAlternativeNames ('alternative','192.168.2.3')
-
-    .EXAMPLE
-    Create-Certificate -Name server -CertificateAuthorityServer caserver -CertificateAuthorityName caname -CertificateTemplate cawebtemplate
-    
-    .NOTES
-    No notes are available at this time.
-    #>
-
+function New-SSLCertificate {
     param(
-        [Parameter(Mandatory=$True)]
-        [Alias('Server','ServerName')]
-        [string]$Name,
-        [Alias('DomainName')]
-        [string]$Domain = ($env:USERDNSDOMAIN),
-        [String]$CommonName = ($Name + '.' + $Domain),
-        [Alias('IPAddress','IP Address')]
-        [String]$IP = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
-        [Alias('SANs','SAN')]
-        [String[]]$SubjectAlternativeNames = $null,
-        [String]$CertificateAuthorityServer = ((certutil -ADCA | select-string dnshostname | select -first 1).tostring().split('=')[1]).Trim(),
-        [String]$CertificateAuthorityName = ((certutil -ADCA | select-string displayName | select -first 1).tostring().split('=')[1]).Trim(),
-        [Parameter(Mandatory=$True)]
-        [String]$CertificateTemplateName = "",
-        [String]$CertificatePassword = 'testpassword',
-        [String]$CertificateChainPath = $null,
-        [String]$Country = 'US',
-        [String]$State = 'IL',
-        [Parameter(Mandatory=$True)]
-        [String]$Locality = "",
-        [Parameter(Mandatory=$True)]
-        [String]$Organization = "",
-        [String]$OrganizationalUnit = 'N/A',
-        [String]$OpenSSLPath = (Get-command openssl*).Source,
-        [String]$OutputPath = "$((get-location).path)\$Name.$Domain",
-        [switch]$OverWrite = $false,
-        [switch]$Regenerate = $false,
-        [switch]$UseDefaultSANs = $true
+        #Certificate name (usually the short name)    
+        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+        [Alias('ServerName,ComputerName')]
+        [string]
+        $Name,
+
+        #Domain Name for request (combined with Name to get FQDN)
+        [parameter(Mandatory = $false)]
+        [string]
+        $DomainName = ($env:USERDNSDOMAIN),
+
+        #Common Name (set to FQDN by default)
+        [parameter(Mandatory = $false)]
+        [string]
+        $CommonName = ('{0}.{1}' -f $Name, $DomainName),
+    
+        #IPAddress for FQDN
+        [parameter(Mandatory = $false)]
+        [string]
+        $IPAddress = ([net.dns]::GetHostEntry($CommonName).AddressList.IPAddresstoString),
+    
+        #Subject Alternative Name to apply
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string[]]
+        $SubjectAlternativeNames = $null,
+    
+        #Server that is your Certificate Authority
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $CAServer = ((certutil -ADCA | select-string dnshostname | Select-Object -first 1).tostring().split('=')[1]).Trim(),
+    
+        #Certificate Authority Name
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $CAName = ((certutil -ADCA | select-string displayName | Select-Object -first 1).tostring().split('=')[1]).Trim(),
+    
+        #Name of Template in Certificate Authority
+        [parameter(Mandatory = $True, ValueFromPipelineByPropertyName)]
+        [string]
+        $TemplateName,
+    
+        #Password assigned to PFX file
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $PFXPassword = 'testpassword',
+    
+        #Path to Certificate Chain (will download from CA if not specified)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $ChainPath,
+    
+        #Country to be used by Certificate Request (uses public IP to determine country)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $Country = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).country,
+    
+        #State to be used by Certificiate Request (uses public IP to determine State)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $State = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).region,
+    
+        #Locality or City for CSR (uses public IP to determine city/locality)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $Locality = (Invoke-RestMethod -Method Get -Uri "https://ipinfo.io/$((Invoke-WebRequest -uri 'http://ifconfig.me/ip' -verbose:$false).Content)" -Verbose:$false).city,
+    
+        #Organization for CSR
+        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName)]
+        [ValidateNotNullorEmpty()]
+        [string]
+        $Organization,
+    
+        #Organization Unit for CSR
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $OrganizationalUnit = 'n/a',
+    
+        #Path to OpenSSL executable (must be available)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $OpenSSLPath = (Get-command openssl*).Source,
+    
+        #Path to create folder and files for Certificate Request
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [string]
+        $OutputPath = "$((get-location).path)\$Name.$DomainName",
+    
+        #Overwrite existing Certificate (renames folder to backup-<date>)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [boolean]
+        $OverwriteExisting = $false,
+    
+        #Regenerate Certificate (unused)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [boolean]
+        $Regenerate = $false,
+    
+        #Adds default SAN Names to Request (DNS: short name, DNS: FQDN, DNS: <ipaddresss>, IP: <ipaddress>)
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [boolean]
+        $UseDefaultSAN = $true,
+    
+        #self sign the certificate
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName)]
+        [boolean]
+        $SelfSignCertificate = $false
     )
 
-    ## Generate the Fully Qualified Domain Name
-    $FQDN = ($name + '.' + $Domain)
+    $ErrorActionPreference = 'Stop'
 
-    ## Verify we have a valid openssl executable
-    If ((Test-Path -Path $OpenSSLPath))
-    {
-        ## Clear Out folder if directed to OverWrite
-        If ((Test-Path -Path $OutputPath\$name.cfg) -and $OverWrite)
-        {
-            Remove-Item $OutputPath\* -Force    
-        }
-        ## Move Existing files to backup folder is files exist
-        if ((Test-Path -Path $OutputPath\$name.key) -and $Regenerate)
-        {
-            New-Item "$OutputPath\Backup-$((get-date).tostring('yyyy.MM.dd_hh.mm.ss'))" -ItemType Directory
-            Get-ChildItem $Outputpath -Exclude *.cfg,backup | Move-Item -Destination $OutputPath\Backup\
-        }
-        ## Create Directory for Generating Certificate if it doesn't exist
-        If (!(Test-Path -Path $OutputPath))
-        {
-            New-Item $OutputPath -ItemType Directory | Out-Null
+    $Name = $Name.ToUpper()
+    $DomainName = $DomainName.ToUpper()
+    $FQDN = ('{0}.{1}' -f $Name, $DomainName)
 
-            Write-Host "Created Directory location: $OutputPath"
-        }
-
-        if (!(Test-Path -Path $OutputPath\$name.cfg))
-        {
-            ## Create Config File
-            $Template = "[ req ]" + [environment]::newline
-            $Template += "default_bits = 2048" + [environment]::newline
-            $Template += "default_keyfile = rui.key" + [environment]::newline
-            $Template += "distinguished_name = req_distinguished_name" + [environment]::newline
-            $Template += "encrypt_key = no" + [environment]::newline
-            $Template += "prompt = no" + [environment]::newline
-            $Template += "string_mask = nombstr" + [environment]::newline
-            $Template += "req_extensions = v3_req" + [environment]::newline
-            $Template += "[ v3_req ]" + [environment]::newline
-            $Template += "basicConstraints = CA:FALSE" + [environment]::newline
-            $Template += "keyUsage = digitalSignature, keyEncipherment, dataEncipherment" + [environment]::newline
-            $Template += "extendedKeyUsage = serverAuth, clientAuth" + [environment]::newline
-            $Template += "subjectAltName = "
-            ## Check if Default SANs should be used
-            if ($UseDefaultSANs)
-            {
-                $Template += "DNS: $name, DNS: $FQDN, DNS: $IP, IP: $IP"
-            }
-
-            ## Add any additional SANs provided
-            foreach ($san in $SubjectAlternativeNames)
-            {
-                ## Add DNS SAN type if not specified
-                If ($san -notlike "*:*")
-                {
-                    $Template += ",DNS:$san"
-                }
-                Else
-                {
-                    $Template += ",$san"
-                }
-            }
-            $Template += [environment]::NewLine + [environment]::newline
-            $Template += "[ req_distinguished_name ]" + [environment]::newline
-            $Template += "countryName = $Country" + [environment]::newline
-            $Template += "stateOrProvinceName = $State" + [environment]::newline
-            $Template += "localityName = $Locality" + [environment]::newline
-            $Template += "0.organizationName = $Organization" + [environment]::newline
-            $Template += "organizationalUnitName = $OrganizationalUnit" + [environment]::newline
-            $Template += "commonName = $CommonName" + [environment]::newline
-
-            $Template | Set-Content -Path "$OutputPath\$name.cfg" -Encoding Ascii
-
-            Write-Host "Created Config file at $OutputPath\$Name.cfg"
-        }
-
-        ## Verify no existing private key or csr
-        If ((Test-Path -Path $OutputPath\$Name.cfg) -and !(Test-Path -Path $Outputpath\$Name-orig.key) -and !(Test-Path -Path $OutputPath\$Name.csr))
-        {
-            ## Generate CSR and DSA Version of Private Key
-            $exp = "& '$OpenSSLPath' req -new -nodes -out $OutputPath\$name.csr -keyout $OutputPath\$name-orig.key -config $OutputPath\$name.cfg -sha256"
-            Invoke-Expression $exp | out-null
-
-            ## Create RSA version of Private key
-            $exp = " & '$OpenSSLPath' rsa -in $OutputPath\$Name-orig.key -out $OutputPath\$Name.key"
-            Invoke-expression $exp | out-null
-        }
-
-        ## Submit Signing Request if Regenerating or non-existant
-        If ($Regenerate -or !(Test-Path -Path $Outputpath\$Name.crt))
-        {
-            ## Submit Request to CA
-            $exp = "certreq.exe -submit -config '$CertificateAuthorityServer\$CertificateAuthorityName' -attrib 'CertificateTemplate:$CertificateTemplateName' '$OutputPath\$Name.csr' '$OutputPath\$Name.crt'" 
-            Invoke-expression $exp | out-null
-        }
-
-        if (!$CertificateChainPath)
-        {
-            ## download Certificate Chain
-            Invoke-WebRequest -URI "http://$CertificateAuthorityServer/certsrv/certnew.p7b?ReqID=CACert&Renewal=6&Mode=inst&Enc=b64" -UseDefaultCredentials -OutFile $OutputPath\chain.p7b
-
-            ## Convert p7b (pkcs7) to pem
-            Invoke-expression "& '$OpensslPath' pkcs7 -in $OutputPath\chain.p7b -out $OutputPath\chain.pem -print_certs"
-
-            Remove-item $OutputPath\chain.p7b -Force
-        }
-
-        ## Create PFX file
-        If (Test-Path -Path $OutputPath\$name.crt)
-        {
-            $exp = "& '$OpensslPath' pkcs12 -export -in $OutputPath\$name.crt -inkey $OutputPath\$name.key -certfile $OutputPath\chain.pem -name $fqdn -passout pass:$certificatepassword -out $outputpath\$name.pfx"
-            Invoke-expression $exp | out-null
-        }
-
-        
+    #region Test Path for Openssl
+    If (-Not (Test-Path -Path $OpenSSLPath)) {
+        Write-Error ('Path to OpenSSL not Found') -ErrorAction Stop
     }
-    Else
-    {
-        Write-Error -Message "OpenSSL executable is not valid, either OpenSSL is not installed on your system or provided path to OpenSSL is unavailable!"
+    Write-Verbose ('{0}: VALIDATED - OpenSSL executable found at "{1}"' -f (get-date).tostring(), $OpenSSLPath)
+    #endregion
+
+    #region Validate Path is available)
+    if ((Test-Path -Path $OutputPath) -and -Not $OverwriteExisting) {
+        Write-Error ('Output path already exists and overwrite is not selected!') -ErrorAction Stop
     }
+    Write-Verbose ('{0}: VALIDATED - Output path "{1}" not available to created' -f (get-date).tostring(), $OutputPath)
+    #endregion
+
+    #region Backup existing if overwriting
+    if ($OverwriteExisting -and (Test-Path $OutputPath)) {
+        try {
+            Move-Item -Path $OutputPath -Destination ('{0}-Backup_{1}' -f $OutputPath, (get-date).ToString('yyyy.MM.dd_hh.mm.ss'))
+        }
+        catch {
+            Write-Error ('Error Moving Folder!') -ErrorAction Stop
+        }
+    }
+    Write-Verbose ('{0}: Renamed Existing Folder from "{1}" to "{1}-Backup_{2}"' -f (get-date).tostring(), $outputpath, (get-date).tostring('yyyy.MM.dd_hh.mm.ss'))
+    #endregion
+
+    #region Create Output Folder
+    if (-Not (Test-Path -Path $OutputPath)) {
+        try {
+            New-Item $OutputPath -ItemType container | Out-Null
+        }
+        catch {
+            Write-Error ('Unable to create Output Path location!') -ErrorAction Stop
+        }
+
+        Write-Verbose ('{0}: Created Output Folder "{1}"' -f (get-date).tostring(), $OutputPath)
+    }
+    #endregion
+
+    #region Get Certificate Chain if not provided
+    if (-Not $ChainPath) {
+        try {
+            Invoke-Expression ("certutil -'ca.chain' -config '{0}\{1}' {2}\chain.der" -f $CAServer, $CAName, $OutputPath) | Out-Null
+            Write-Verbose ('{0}: Certutil CA Chain Exported from "{1}\{2}" to "{3}\chain.der"' -f (get-date).tostring(), $CAServer, $CAName, $OutputPath)
+            Invoke-Expression ("certutil -encode '{0}\chain.der' '{0}\chain.p7b'" -f $OutputPath) | Out-Null
+            Write-Verbose ('{0}: Converted Encoding of CA Chain to "{1}\chain.p7b"' -f (get-date).tostring(), $OutputPath)
+            Invoke-Expression ("&'{0}' pkcs7 -print_certs -in '{1}\chain.p7b' -out '{1}\chain.pem'" -f $OpenSSLPath, $OutputPath) | Out-Null
+            Write-Verbose ('{0}: Converted P7B file to PEM at "{1}\chain.pem"' -f (get-date).tostring(), $OutputPath)
+        }
+        catch {
+            Write-Warning ('A problem occured retrieving the Certificate Chain from CA, PFX will not be created')
+        }
+    }
+    else {
+        if (-Not (Test-Path -Path $ChainPath)) {
+            Write-Warning ('Provided Certificate Chain Path is not valid!')
+        }
+        else {
+            Copy-Item -Path $ChainPath -Destination "$OutputPath\chain.pem"
+            Write-Verbose ('{0}: Copied Certificate Chain from "{1}" to "{2}\chain.pem"' -f (get-date).tostring(), $ChainPath, $OutputPath)
+        }
+    }
+    #endregion
+
+    #region Generate Request File
+    $Template = '[ req ]' + [environment]::NewLine
+    $Template += "default_bits = 2048" + [environment]::newline
+    $Template += "default_keyfile = rui.key" + [environment]::newline
+    $Template += "distinguished_name = req_distinguished_name" + [environment]::newline
+    $Template += "encrypt_key = no" + [environment]::newline
+    $Template += "prompt = no" + [environment]::newline
+    $Template += "string_mask = nombstr" + [environment]::newline
+    $Template += "req_extensions = v3_req" + [environment]::newline
+    $Template += "[ v3_req ]" + [environment]::newline
+    $Template += "basicConstraints = CA:FALSE" + [environment]::newline
+    $Template += "keyUsage = digitalSignature, keyEncipherment, dataEncipherment" + [environment]::newline
+    $Template += "extendedKeyUsage = serverAuth, clientAuth" + [environment]::newline
+    $Template += "subjectAltName = "
+    ## Check if Default SANs should be used
+    if ($UseDefaultSAN) {
+        $Template += "DNS: $name, DNS: $FQDN, DNS: $IPAddress, IP: $IPAddress"
+    }
+    else {
+        $Template += "DNS: $CommonName"
+    }
+    ## Add any additional SANs provided
+    $SubjectAlternativeNames | Where-Object { $_ } | ForEach-Object { if ($_ -notlike '*:*') { $Template += ",DNS:$_" } else { $Template += ",$_" } }
+
+    $Template += [environment]::NewLine + [environment]::newline
+    $Template += "[ req_distinguished_name ]" + [environment]::newline
+    $Template += "countryName = $Country" + [environment]::newline
+    $Template += "stateOrProvinceName = $State" + [environment]::newline
+    $Template += "localityName = $Locality" + [environment]::newline
+    $Template += "0.organizationName = $Organization" + [environment]::newline
+    $Template += "organizationalUnitName = $OrganizationalUnit" + [environment]::newline
+    $Template += "commonName = $CommonName" + [environment]::newline
+
+    $Template | Set-Content -Path "$OutputPath\$name.cfg" -Encoding Ascii
+
+    Write-Verbose ('{0}: Generated Config File Template at "{1}\{2}.cfg"' -f (get-date).tostring(), $OutputPath, $name)
+    Get-Content "$OutputPath\$name.cfg" | ForEach-Object { Write-Verbose ("{0}:`t`t{1}" -f (get-date).tostring(), $_) }
+
+    #endregion
+
+    #region Generate CSR and Key
+    #Create CSR and DSA version of Private key
+    Write-Verbose ('{0}: Starting Generation of Certificate Files...' -f (get-date).tostring())
+    $ErrorActionPreference = 'silentlycontinue'
+    Invoke-Expression ("& '{0}' req -new -nodes -out '{1}\{2}.csr' -keyout '{1}\{2}-orig.key' -config '{1}\{2}.cfg' -sha256 {3}" -f $OpenSSLPath, $OutputPath, $name, '2>&1 | out-null')
+    $ErrorActionPreference = 'Stop'
+    if (-Not (Test-Path -Path "$outputpath\$name-orig.key")) { Write-Error ('A problem occured Generating the DSA key file') -ErrorAction Stop }
+    if (-Not (Test-Path -Path "$OutputPath\$Name.csr")) { Write-Error ('A problem occured Generating the CSR file') -ErrorAction Stop }
+    Write-Verbose ('{0}: CSR and DSA Key Generated' -f (get-date).tostring())
+    #Create RSA version
+    $ErrorActionPreference = 'silentlycontinue'
+    Invoke-Expression ("& '{0}' rsa -in '{1}\{2}-orig.key' -out '{1}\{2}.key' {3}" -f $OpenSSLPath, $OutputPath, $name, '2>&1 | out-null')
+    $ErrorActionPreference = 'stop'
+    if (-Not (Test-Path -Path "$outputpath\$name.key")) { Write-Error ('A problem occured Generating the RSA key file') -ErrorAction Stop }
+    Write-Verbose ('{0}: RSA Key created from DSA Key' -f (get-date).tostring())
+    #endregion
+
+    #region Submit Signing request
+    if ($SelfSignCertificate) {
+        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Write-Verbose ('{0}: CSR Signed by Self')
+    }
+    else {
+        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(), $caserver, $CAName)
+    }
+    #endregion
+
+    #region Create PFX
+    if ((Test-Path -Path "$OutputPath\Chain.pem") -and -Not $SelfSignCertificate) {
+        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue -OutVariable $result
+    
+    }
+    #endregion
+
+    <#
+.SYNOPSIS
+Creates Certificate Request and signs with internal CA or self
+
+.DESCRIPTION
+This function attempts to pre-populate parameters to allow a relatively quick Certificate Creation Process.
+
+Minimum Required Values = Name,TemplateName,Organization (assuming only one CA in environment)
+
+OpenSSL.exe is used to execute most commands except the signing process since certutil is the best path for Windows CA.
+
+If you do not have OpenSSL, we recommend using choco to install openssl.light or download to your computer appropriately through the web.
+
+.EXAMPLE
+
+Minimum Options Used Below:
+
+New-SSLCertificate -Name SERVER01 -TemplateName WebServer -Organization Constoso
+
+**Note: This Assumes you have: 
+    1.) openssl in your command path under powershell, 
+    2.) one CA on your network
+    3.) you want the local path for output
+    4.) PublicIP is correct for country, state and city/locality
+    5.) FQDN resolves to IP address
+    6.) domain name is the same as for the computer you are current running command
+
+.EXAMPLE
+
+All Options being Set Below:
+
+New-SSLCertificate -Name SERVER01 `
+    -Domain 'contoso.local' `
+    -IPAddress '10.0.0.5' `
+    -CAServer 'CASERVER01' `
+    -CAName 'CASERVER01-CA' `
+    -TemplateName WebServer `
+    -PFXPassword 'supersecure' `
+    -ChainPath 'C:\chain.pem' `
+    -Country US -State TX `
+    -Locality Austin `
+    -Organization 'Contoso' `
+    -OpenSSLPath 'C:\openssl\openssl.exe' `
+    -OutputPath 'c:\Certs\SERVER01.contoso.local'
+
+**Note: generally this it is not necessary to specify ALL options
+
+.EXAMPLE
+
+$Array = @()
+$Array += New-Object psobject -Property @{Name='SERVER01';
+    TemplateName='WebServer';
+    Organization='Contoso';
+    OpenSSLPath='C:\Program Files\OpenSSL\bin\openssl.exe';
+    OverwriteExisting=$true}
+
+$Array | foreach-object {New-SSLCertificate -Name $_.Name -TemplateName $_.TemplateName -Organization $_.Organization -OpenSSLPath $_.OpenSSLPath -OverwriteExisting $_.OverwriteExisting}
+
+**Note: The above can be used to create multiple Certificates quickly
+
+#>
 }
 
 function Test-SQLDatabase 
@@ -1638,41 +1749,60 @@ Function Get-ExpiredCerts
   [GC]::Collect()
 }
 
-function Test-PendingReboot
-{
+function Test-PendingReboot {
     Param(
-        [string]$ComputerName = 'localhost'
+        [Parameter(Mandatory=$false)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $ComputerName = 'localhost'
     )
+
     $ErrorActionPreference = 'Ignore'
 
     $Reg = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey('localmachine',$ComputerName)
     if ($reg.opensubkey("Software\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\RebootPending").GetValueNames()) {return $true}
     if ($reg.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired").GetValueNames()) {return $true}
     if ($reg.OpenSubKey("SYSTEM\CurrentControlSet\Control\Session Manager").GetValue('PendingFileRenameOperations')) {return $true}
-    try{ 
+    try { 
         $util = [wmiclass]"\\$Computername\root\ccm\clientsdk:CCM_ClientUtilities"
         $status = $util.DetermineIfRebootPending()
-        if(($status -ne $null) -and $status.RebootPending){
+        if(($status -ne $null) -and $status.RebootPending) {
             return $true
         }
-    }catch{}
+    } catch {
+
+    }
  
-     return $false
+    return $false
 }
 
-function Get-ADUserMembership
-{
+function Get-ADUserMembership {
     Param(
-        [String]$ADUserName
+        [String]
+        $ADUserName
     )
 
-    $dn = (Get-ADUser $ADUserName).DistinguishedName
+    $_dn = (Get-ADUser $ADUserName -ErrorAction SilentlyContinue).DistinguishedName
 
-    (Get-ADGroup -LDAPFilter ("(member:1.2.840.113556.1.4.1941:={0})" -f $dn))
+    if (-Not $_dn) {
+        Write-Error ('AD user Not found') -ErrorAction Stop
+    }
+
+    $_result = Get-ADGroup -LDAPFilter "(member:1.2.840.113556.1.4.1941:=$_)" -ErrorAction SilentlyContinue
+
+    if (-Not $_result) {
+        Write-Error ('No result returned for AD User Membership')
+    }
+
+    return $_result
 }
 
-function Show-Alien
-{
+function Show-Alien {
+    Param(
+        [consolecolor]
+        $Color
+    )
+
     $block = @"
  
 .     .       .  .   . .   .   . .    +  .
@@ -1703,5 +1833,5 @@ function Show-Alien
  
 "@
  
-    Write-Host $block -ForegroundColor Green
+    Write-Host $block -ForegroundColor $Color
 }
