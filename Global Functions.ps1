@@ -1835,3 +1835,103 @@ function Show-Alien {
  
     Write-Host $block -ForegroundColor $Color
 }
+
+function Write-ZeroFile {
+    [CmdletBinding()]
+    Param(
+        # Drive Letter to Create Zero File
+        [Parameter(Mandatory=$false)]
+        [Char]
+        $DriveLetter = 'C',
+
+        # Name of File to create
+        [Parameter(Mandatory=$false)]
+        [string]
+        $FileName = 'ZeroFile.tmp',
+
+        # Free Space to leave on Drive (1-100)
+        [Parameter(Mandatory=$false)]
+        [ValidateRange(1,100)]
+        [Int]
+        $PercentFree = 5
+    )
+
+    #region Validate Volume
+    $_Volume = Get-WmiObject -Class win32_Volume -Filter "Name like '$DriveLetter%'" -ErrorAction SilentlyContinue -Verbose:$false
+    
+    if (-Not $_Volume) {
+        Write-Error ('Drive Letter "{0}" not found' -f $DriveLetter) -ErrorAction Stop
+    }
+    Write-Verbose ('{0}: VALIDATED - Drive Letter "{1}" Found!' -f (get-date).tostring(),$DriveLetter)
+    #endregion
+
+    #region Validate Space
+    $_SpaceToLeave = $_Volume.Capacity * ($PercentFree/100)
+
+    if ($_SpaceToLeave -ge $_volume.FreeSpace) {
+        Write-Error ('PercentFree "{0}" is smaller than current free space "{1}"' -f $_SpaceToLeave,$_volume.FreeSpace) -ErrorAction Stop
+    }
+    Write-Verbose ('{0}: VALIDATED - Free Space is greater than "{1}"' -f (get-date).tostring(),$_SpaceToLeave)
+    #endregion
+
+    #region Validate Path
+    $_FilePath = $_Volume.Name + $FileName
+
+    if (Test-Path $_FilePath) {
+        Write-Error ('ZeroFile "{0}" already exists' -f ($_volume.name + $FileName)) -ErrorAction Stop
+    }
+    Write-Verbose ('{0}: VALIDATED - File "{1}" does not exist, ready to create' -f (get-date).ToString(), $_FilePath)
+    #endregion
+
+    #region Write Zeroed File
+    $_ArraySize = 64kb
+    $_FileSize = $_Volume.FreeSpace - $_SpaceToLeave
+    $_ZeroArray = New-Object byte[]($_ArraySize)
+
+    try {
+        $_Stream = [io.file]::OpenWrite($_FilePath)
+        Write-Verbose ('{0}: Created File Stream @ "{1}"' -f (get-date).tostring(),$_FilePath)
+        $_CurFileSize = 0
+        While ($_CurFileSize -lt $_FileSize) {
+            $_Stream.Write($_ZeroArray,0,$_ZeroArray.Length)
+            Write-Verbose ('{0}: "{1}" Bytes Written to File "{2}"' -f (get-date).tostring(),$_ArraySize.length,$_FilePath)
+            $_CurFileSize += $_ZeroArray.Length
+        }
+    } finally {
+        if ($_Stream) {
+            $_Stream.Close()
+            Write-Verbose ('{0}: File Stream Closed' -f (get-date).tostring())
+        }
+    }
+    #endregion
+
+    #region File Cleanup
+    if (Test-Path $_FilePath) {
+        Remove-Item -Path $_FilePath -Force -Confirm:$false -ErrorAction SilentlyContinue
+        if (Test-Path $_FilePath) {
+            Write-Error ('Unable to Delete File "{0}"' -f $_FilePath) -ErrorAction Continue
+        } else {
+            Write-Verbose ('{0}: Removed File "{1}"' -f (get-date).tostring(),$_FilePath)
+        }
+    }
+    #endregion
+
+    <#
+    .SYNOPSIS
+
+    Writes a Large File using zeroes to a volume.
+
+    .DESCRIPTION
+
+    Creates a File (Default is ZeroFile.tmp) on the Specified Drive filling up to the specified PercentFree (Default 5%).
+
+    This is intended to help with space reclamation similar to sdelete
+
+    .EXAMPLE
+
+    Write-ZeroFile
+
+    **Note: Writes a file to C:\ZeroFile.tmp leaving 5% free disk space
+    
+    #>
+}
