@@ -1558,19 +1558,19 @@ function New-SSLCertificate {
 
     #region Submit Signing request
     if ($SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Invoke-Expression ("& '{0}' req x509 -sha256 -days 365 -key '{1}\{2}.key' -'{1}\{2}.csr' -out '{1}\{2}.crt' {3}" -f $OpenSSLPath, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop | Out-Null
         Write-Verbose ('{0}: CSR Signed by Self')
     }
     else {
-        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop -OutVariable $result
+        Invoke-Expression ("certreq.exe -submit -config '{0}\{1}' -attrib 'CertificateTemplate:{2}' '{3}\{4}.csr' '{3}\{4}.crt' {5}" -f $CAServer, $CAName, $TemplateName, $OutputPath, $Name, '2>&1 | out-null') -ErrorAction Stop | Out-Null
         Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(), $caserver, $CAName)
     }
     #endregion
 
     #region Create PFX
     if ((Test-Path -Path "$OutputPath\Chain.pem") -and -Not $SelfSignCertificate) {
-        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue -OutVariable $result
-    
+        Invoke-Expression ("& '{0}' pkcs12 -export -in '{1}\{2}.crt' -inkey '{1}\{2}.key' -certfile '{1}\chain.pem' -name '{3}' -passout pass:'{4}' -out '{1}\{2}.pfx' {5}" -f $OpenSSLPath, $OutputPath, $Name, $FQDN, $PFXPassword, '2>&1 | out-null') -ErrorAction Continue | Out-Null
+        Write-Verbose ('{0}: PFX File Generated' -f (get-date).tostring())
     }
     #endregion
 
@@ -1932,6 +1932,6 @@ function Write-ZeroFile {
     Write-ZeroFile
 
     **Note: Writes a file to C:\ZeroFile.tmp leaving 5% free disk space
-    
+
     #>
 }
