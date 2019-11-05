@@ -1127,22 +1127,18 @@ function Set-PageFile {
     #>
 }
 
-Function Create-MyPSDrive
-{
+Function Create-MyPSDrive {
 	Param(
 		[String]$Root = ('\\il-svr-fs01\users\{0}' -f (($env:USERNAME).Trim('a_'))),
 		[String]$Drive = (($env:USERNAME).Trim('a_'))
 	)
 
-	If (Test-Path -Path $Root)
-	{
+	If (Test-Path -Path $Root) {
 		New-PSDrive -Name $Drive -Root $Root -PSProvider FileSystem -Scope Global
 	}
-	
 }
 
-Function Add-TokenPrivilege
-{
+Function Add-TokenPrivilege {
  
     $code = @"
 using System;
@@ -1281,13 +1277,11 @@ namespace CosmosKey.Utils
     [void][CosmosKey.Utils.TokenManipulator]::AddPrivilege([CosmosKey.Utils.TokenManipulator]::SE_RESTORE_NAME)
 }
 
-Function Get-PublicIP
-{
+Function Get-PublicIP {
     return (new-object psobject -Property @{PublicAddress=((Invoke-WebRequest -uri "http://ifconfig.me/ip").content.Trim())})
 }
 
-function Restart-RemoteService
-{
+function Restart-RemoteService{
     Param
     (
         [Parameter(Mandatory = $true)][String]$Server,
@@ -1296,15 +1290,10 @@ function Restart-RemoteService
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    
-    try
-    {
-        if ($Credential)
-        {
+    try {
+        if ($Credential) {
             $svc = Get-WMIObject -Class Win32_Service -ComputerName $Server -Filter ("Name='$ServiceName'") -Credential $Credential
-        }
-        Else
-        {
+        } Else {
             $svc = Get-WMIObject -Class Win32_Service -ComputerName $Server -Filter ("Name='$ServiceName'")
         }
 
@@ -1312,9 +1301,7 @@ function Restart-RemoteService
         Write-Host ('Service {0} Stopped on Server {1}' -f $ServiceName,$Server)
         $svc.StartService() | Out-Null
         Write-Host ('Service {0} Started on Server {1}' -f $ServiceName,$Server)
-    }
-    catch
-    {
+    } catch {
         Write-Error ('Error Restarting Service')
     }
 }
@@ -1635,6 +1622,145 @@ $Array | foreach-object {New-SSLCertificate -Name $_.Name -TemplateName $_.Templ
 **Note: The above can be used to create multiple Certificates quickly
 
 #>
+}
+
+function New-CertificateSigning {
+    [CmdletBinding()]
+    param(
+        #Certificate name (usually the short name)    
+        [parameter(Mandatory = $true,
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $CSRPath,
+        
+        #Path to create folder and files for Certificate Request
+        [parameter(Mandatory = $false, 
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $OutputFile = (Get-Item $CSRPath).FullName.Replace('.csr','.crt'),
+
+        #Server that is your Certificate Authority
+        [parameter(Mandatory = $false, 
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $CAServer = ((certutil -ADCA | select-string dnshostname | Select-Object -first 1).tostring().split('=')[1]).Trim(),
+    
+        #Certificate Authority Name
+        [parameter(Mandatory = $false, 
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $CAName = ((certutil -ADCA | select-string displayName | Select-Object -first 1).tostring().split('=')[1]).Trim(),
+    
+        #Name of Template in Certificate Authority
+        [parameter(Mandatory = $True, 
+            ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $TemplateName,
+    
+        #Subject Alternative Name to apply
+        [parameter(Mandatory = $false, 
+            ValueFromPipelineByPropertyName = $true)]
+        [string[]]
+        $SubjectAlternativeNames = $null,
+    
+        #Overwrite existing Certificate (renames folder to backup-<date>)
+        [parameter(Mandatory = $false, 
+            ValueFromPipelineByPropertyName = $true)]
+        [switch]
+        $OverwriteExisting
+    )
+
+    $ErrorActionPreference = 'Stop'
+    $_CSRFileExists = Test-Path -Path $CSRPath -PathType Leaf
+    $_OutputFileExists = Test-Path -Path $OutputFile -PathType Leaf
+
+    #region Validate CSR File Path
+    if (-Not ($_CSRFileExists)) {
+        Write-Error ('File "{0}" not found' -f $CSRPath)
+    }
+    Write-Verbose ('{0}: VALIDATED - CSR File Exists at "{1}"' -f (get-date).tostring(),$CSRPath)
+    #endregion
+
+    #region Validate SAN option
+    if ($SubjectAlternativeNames) {
+        if (-Not (certutil.exe -getreg -config "$CAServer\$CAName" policy | select-string EDITF_ATTRIBUTESUBJECTALTNAME2).tostring().trim()) {
+            Write-Error ('Certificate Authority does not allow Subject Alternative Names Override!') -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Edit Subject Alternative Name option enabled on Certificate Authority' -f (get-date).tostring())
+    }
+    #endregion
+
+    #region Validate File Output
+    if (-Not $OverwriteExisting) {
+        if (($_OutputFileExists)) {
+            Write-Error ('File "{0}" already exists' -f $OutputFile) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - File "{1}" ready to be created' -f (get-date).tostring(),$OutputFile)
+    } else {
+        if (-Not ($_OutputFileExists)) {
+            Write-Warning ('Overwrite existing selected but file does not exist.')
+        }
+        Write-Verbose ('{0}: VALIDATED - File "{1}" will be renamed' -f (get-date).ToString(),$OutputFile)
+    }
+    #endregion
+
+    #region Rename OutputFile
+    if ($OverwriteExisting -and ($_OutputFileExists)) {
+        $_File = Get-item $OutputFile
+        $_NewName = ("{0}\{1}-{2}{3}" -f $_file.Directory.FullName,$_file.BaseName,(get-date).tostring('yyyy.MM.dd_hh.mm.ss'),$_file.Extension)
+        Rename-Item -Path $_file.FullName -NewName $_NewName
+        if (-Not (Test-Path -Path $_NewName -PathType Leaf)) {
+            Write-Error ('Rename of file "{0}" to "{1}" failed' -f $OutputFile,$_NewName) -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: Renamed File "{1}" to "{2}"' -f (get-date).tostring(),$OutputFile,$_NewName)
+    }
+    #endregion
+
+    #region Submit Signing request
+    $_Command = ''
+    $_Command += "certreq.exe -submit -config '$CAServer\$CAName' "
+    $_Command += " -attrib 'CertificateTemplate:$TemplateName"
+    if ($SubjectAlternativeNames) {
+        $_Command += '\nSAN:' + (($SubjectAlternativeNames | ForEach-Object {if ($_ -notlike 'dns=*' -and $_ -notlike 'ipaddress=*') {('dns=' + $_)} else {$_}}) -join '&')    
+    }
+    $_Command += "' '$CSRPath' '$OutputFile'"
+    #$_Command += ' 2>&1 | out-null'
+    Write-Verbose ('{0}: Using Command - "{1}"' -f (get-date).tostring(),$_Command)
+
+    Invoke-Expression -Command $_Command -ErrorAction Stop | Out-Null
+    Write-Verbose ('{0}: CSR Signed by CA "{1}\{2}"' -f (get-date).tostring(), $caserver, $CAName)
+    #endregion
+
+    <#
+    .SYNOPSIS
+
+    Signs a CSR File with AD Domain Certificate Authority
+
+    .DESCRIPTION
+    
+    This function provides a quick way to sign a CSR file with the AD Domain Certificate authority.
+
+    .EXAMPLE
+
+    New-CertificateSigning -CSRPath C:\Certs\server01.csr -Template WebServer
+
+    .EXAMPLE
+
+    New-CertificateSigning -CSRPath .\server01.csr `
+        -Template WebServer
+
+    **Note: Command uses the minimum amount of info to sign a CSR
+
+    .EXAMPLE
+
+    New-CertificateSigning -CSRPath .\Server01 `
+        -Template WebServer
+        -SubjectAlternativeNames ('server01.domain.com','10.0.0.5','ipaddress=10.0.0.5','dns=server.domain.com')
+        -OverwriteExisting
+
+    **Note: Above example overrides any Subject Alterntive names and renames the crt file if it exists.
+
+    #>
 }
 
 function Test-SQLDatabase 
