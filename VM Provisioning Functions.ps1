@@ -135,15 +135,15 @@ function New-VMfromTemplate {
     $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
     if (-Not $_vCenter) {
         if ($global:DefaultVIServers.Count -gt 0) {
-            Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+            VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
 
             Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
             if ($vCenterCreds) {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
             } else {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
             }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
@@ -156,15 +156,15 @@ function New-VMfromTemplate {
     #endregion
 
     #region Server does not exist already
-    if (Get-VM $ServerName -ErrorAction SilentlyContinue -Verbose:$false) {
+    if (VMware.VimAutomation.Core\Get-VM $ServerName -ErrorAction SilentlyContinue -Verbose:$false) {
         Write-Error ('VM already exists with that name!') -ErrorAction Stop
     }
     Write-Verbose ('{0}: VALIDATED - VM "{1}" not found in vCenter "{2}"' -f (get-date).ToString(),$ServerName,$_vCenter.Name)
     #endregion
 
     #region Datastore/Cluster Valiation
-    $DatastoreClusters = Get-DatastoreCluster -Verbose:$false -ErrorAction SilentlyContinue
-    $Datastores = Get-Datastore -Verbose:$false -ErrorAction SilentlyContinue
+    $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false -ErrorAction SilentlyContinue
+    $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false -ErrorAction SilentlyContinue
     if ($DatastoreClusters) {
         $_Datastore = $DatastoreClusters | Where-Object {$_.Name -like $vCenterDataStore}
     }
@@ -181,8 +181,8 @@ function New-VMfromTemplate {
     #endregion
     
     #region VMHost/Cluster Validation
-    $VMClusters = Get-Cluster -Verbose:$false
-    $VMHosts = Get-VMHost -Verbose:$false
+    $VMClusters = VMware.VimAutomation.Core\Get-Cluster -Verbose:$false
+    $VMHosts = VMware.VimAutomation.Core\Get-VMHost -Verbose:$false
     if ($VMClusters) {
         $_VMHost = $VMClusters | Where-Object {$_.Name -like $vCenterCluster}
     }
@@ -199,7 +199,7 @@ function New-VMfromTemplate {
     #endregion
 
     #region Template Validation
-    $Templates = Get-Template -Verbose:$false
+    $Templates = VMware.VimAutomation.Core\Get-Template -Verbose:$false
     if ($Templates){
         $_Template = $Templates | Where-Object {$_.Name -like $vCenterTemplate}
     }
@@ -214,9 +214,9 @@ function New-VMfromTemplate {
 
     #region Switch Portgroup Validation
     if ($_VMHost.GetType().name -notlike '*host*') {
-        $PortGroups = $_VMHost | Get-VMHost -Verbose:$false | Select-Object -First 1 | Get-VirtualPortGroup -Verbose:$false
+        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VMHost -Verbose:$false | Select-Object -First 1 | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
     } else {
-        $PortGroups = $_VMHost | Get-VirtualPortGroup -Verbose:$false
+        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
     }
     if ($PortGroups) {
         $_PortGroup = $PortGroups | Where-Object {$_.name -like $vCenterPortGroup}
@@ -232,7 +232,7 @@ function New-VMfromTemplate {
 
     #region VM Folder Validation
     if ($vCenterFolder) {
-        $_VMFolder = Get-Folder $vCenterFolder -Verbose:$false -ErrorAction SilentlyContinue
+        $_VMFolder = VMware.VimAutomation.Core\Get-Folder $vCenterFolder -Verbose:$false -ErrorAction SilentlyContinue
     }
     if (-Not $_VMFolder) {
         Write-Warning ('VM Folder not Found!') -ErrorAction Stop
@@ -244,7 +244,7 @@ function New-VMfromTemplate {
     #endregion
 
     #region Customization Spec Validation
-    $_CustomizationSpec = Get-OSCustomizationSpec -Name $vCenterCustomizationSpec -Verbose:$false
+    $_CustomizationSpec = VMware.VimAutomation.Core\Get-OSCustomizationSpec -Name $vCenterCustomizationSpec -Verbose:$false
     if (-Not $_CustomizationSpec) {
         Write-Error ('no customization specs found!') -ErrorAction Stop
     }
@@ -258,7 +258,7 @@ function New-VMfromTemplate {
     #endregion
 
     #region Check for custom attributes
-    $Attributes = Get-CustomAttribute -Verbose:$false -ErrorAction SilentlyContinue
+    $Attributes = VMware.VimAutomation.Core\Get-CustomAttribute -Verbose:$false -ErrorAction SilentlyContinue
     if ($Attributes) {
         if ($Attributes | Where-Object {$_.name -like 'Created By'}) {
             Write-Warning ('Created By Attribute Not Found!')
@@ -346,36 +346,36 @@ function New-VMfromTemplate {
     #endregion
 
     #region Configure Customization Spec
-    $_CustomSpecNic = $_CustomizationSpec | Get-OSCustomizationNicMapping -Verbose:$false
+    $_CustomSpecNic = $_CustomizationSpec | VMware.VimAutomation.Core\Get-OSCustomizationNicMapping -Verbose:$false
     if ($_CustomizationSpec.OSType -like '*windows*') {
-        $_CustomSpecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Dns $ServerDNSServers -Verbose:$false | Out-Null
+        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Dns $ServerDNSServers -Verbose:$false | Out-Null
     } else {
-        $_CustomSpecNic | Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Verbose:$false | Out-Null
+        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Verbose:$false | Out-Null
     }
     Write-Verbose ('{0}: Customization Spec "{1}" Updated' -f (get-date).ToString(), $_CustomizationSpec)
     #endregion
 
     #region Create VM
     if ($_VMFolder) {
-        New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Location $_VMFolder -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+        VMware.VimAutomation.Core\New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Location $_VMFolder -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
     } else {
-        New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+        VMware.VimAutomation.Core\New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
     }
 
     Write-Verbose ('{0}: VM "{1}" Created!' -f (get-date).ToString(),$ServerName)
 
-    $_VM = Get-VM $ServerName -Verbose:$false
-    $_VM | Set-VM -NumCPU $ServerNumberofCPUs -MemoryGB $ServerMemoryGB -Confirm:$false -Verbose:$false | Out-Null
+    $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false
+    $_VM | VMware.VimAutomation.Core\Set-VM -NumCPU $ServerNumberofCPUs -MemoryGB $ServerMemoryGB -Confirm:$false -Verbose:$false | Out-Null
     Write-Verbose ('{0}: Updated VM "{1}" CPU to "{2}" and Memory to "{3}"' -f (get-date).ToString(),$_VM.Name,$ServerNumberofCPUs,$ServerMemoryGB)
-    $_VM | Get-NetworkAdapter -Verbose:$false | Set-NetworkAdapter -Portgroup $_PortGroup.Name -Confirm:$false -Verbose:$false | Out-Null
+    $_VM | VMware.VimAutomation.Core\Get-NetworkAdapter -Verbose:$false | VMware.VimAutomation.Core\Set-NetworkAdapter -Portgroup $_PortGroup.Name -Confirm:$false -Verbose:$false | Out-Null
     Write-Verbose ('{0}: Updated VM "{1}" network adapter to port group "{2}"' -f (get-date).ToString(),$_VM.Name,$_PortGroup.Name)
 
     if ($StartVMAfterCreation) {
-        $_VM | Start-VM -Verbose:$false | Out-Null
+        $_VM | VMware.VimAutomation.Core\Start-VM -Verbose:$false | Out-Null
 
         Write-Verbose ('{0}: VM "{1}" started...' -f (get-date).ToString(),$_VM.Name)
 
-        While (!(Get-VIEvent -Entity $_VM -Verbose:$false | Where-Object {$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'})) {
+        While (!(VMware.VimAutomation.Core\Get-VIEvent -Entity $_VM -Verbose:$false | Where-Object {$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'})) {
             Write-Verbose ("`t`tWaiting for VM Customization to Complete...")
             Start-Sleep 10
         }
@@ -385,35 +385,35 @@ function New-VMfromTemplate {
     
     #region Configure Annotation/Notes for VM
     $_Notes = $_VM.Notes
-    if ($_VM | Get-Annotation -CustomAttribute 'Created By' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | Set-Annotation -CustomAttribute 'Created By' -Value $_vCenter.User.Split('\')[1] -ErrorAction SilentlyContinue -Verbose:$false
+    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Created By' -ErrorAction SilentlyContinue -Verbose:$false) {
+        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Created By' -Value $_vCenter.User.Split('\')[1] -ErrorAction SilentlyContinue -Verbose:$false
         Write-Verbose ('{0}: Updated Custom Attribute "Created By" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
     } else {
         $_Notes += ("Created By:`t{0}" -f $_vCenter.User.Split('\')[1])
     }
-    if ($_VM | Get-Annotation -CustomAttribute 'Created Date' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | Set-Annotation -CustomAttribute 'Created Date' -Value (get-date).ToShortDateString() -Verbose:$false
+    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Created Date' -ErrorAction SilentlyContinue -Verbose:$false) {
+        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Created Date' -Value (get-date).ToShortDateString() -Verbose:$false
         Write-Verbose ('{0}: Updated Custom Attribute "Created Date" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
     } else {
         $_Notes += [environment]::newline
         $_notes += ("Created Date:`t{0}" -f (get-date).ToShortDateString())
     }
-    if ($_VM | Get-Annotation -CustomAttribute 'Purpose' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | Set-Annotation -CustomAttribute 'Purpose' -Value $ServerPurpose -Verbose:$false
+    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Purpose' -ErrorAction SilentlyContinue -Verbose:$false) {
+        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Purpose' -Value $ServerPurpose -Verbose:$false
         Write-Verbose ('{0}: Updated Custom Attribute "Purpose" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
     } else {
         $_Notes += [environment]::newline
         $_Notes += ("Purpose:`t{0}" -f $ServerPurpose)
     }
-    if ($_VM | Get-Annotation -CustomAttribute 'Team Owner' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | Set-Annotation -CustomAttribute 'Team Owner' -Value $ServerTeamOwner -Verbose:$false
+    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Team Owner' -ErrorAction SilentlyContinue -Verbose:$false) {
+        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Team Owner' -Value $ServerTeamOwner -Verbose:$false
         Write-Verbose ('{0}: Updated Custom Attribute "Team Owner" on VM "{1}"' -f (get-date).ToString().$_VM.Name)
     } else {
         $_Notes += [environment]::NewLine
         $_Notes += ("Team Owner:`t{0}" -f $ServerTeamOwner)
     }
     if ($AttributestoNotesWhenMissing) {
-        $_VM | Set-VM -Notes $_Notes -Confirm:$false -Verbose:$false | Out-Null
+        $_VM | VMware.VimAutomation.Core\Set-VM -Notes $_Notes -Confirm:$false -Verbose:$false | Out-Null
         Write-Verbose ('{0}: Updated VM "{1}" Notes Field to include Attirbutes not in vCenter' -f (get-date).ToString(),$_VM.Name)
     }
     #endregion
@@ -582,15 +582,15 @@ function Add-VMtoDomain {
     $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
     if (-Not $_vCenter) {
         if ($global:DefaultVIServers.Count -gt 0) {
-            Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+            VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
 
             Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
             if ($vCenterCreds) {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
             } else {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
             }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
@@ -603,7 +603,7 @@ function Add-VMtoDomain {
     #endregion
 
     #region VM/Server Validation
-    $_VM = Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
+    $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
     if (Get-ADComputer -filter {name -like $servername} -ErrorAction SilentlyContinue -Verbose:$false) {
         Write-Error ('Server AD Computer Object already exists!') -ErrorAction Stop
     }
@@ -691,7 +691,7 @@ function Add-VMtoDomain {
     if ($ServerOSType -eq 'Windows') {
         $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         if (-Not ($_Session) -and $EnableWSMAN) {
-            Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText "Enable-PSRemoting -Force" -Verbose:$false
+            VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText "Enable-PSRemoting -Force" -Verbose:$false
 
             Write-Verbose ('{0}: Unable to connect via PS Remoting, Ran "Enable-PSRemoting -Force" on {1}' -f (get-date).ToString(),$_VM.Name)
 
@@ -855,15 +855,15 @@ function Add-DisktoVM {
     $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
     if (-Not $_vCenter) {
         if ($global:DefaultVIServers.Count -gt 0) {
-            Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+            VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
 
             Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
         }
         try{
             if ($vCenterCreds) {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
             } else {
-                $_vCenter = Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
             }
         } catch {
             Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
@@ -876,7 +876,7 @@ function Add-DisktoVM {
     #endregion
 
     #region Validate VM, OS, and Disk Path
-    $_VM = Get-VM $ServerName -Verbose:$false
+    $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false
 
     if (-Not $_VM) {
         Write-Error ('VM not found!') -ErrorAction Stop
@@ -903,11 +903,11 @@ function Add-DisktoVM {
 
     #region Validate Datastore and Disk Space
     if (-Not $vCenterDataStore) {
-        $_Datastore = Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
+        $_Datastore = VMware.VimAutomation.Core\Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
         Write-Verbose ('{0}: No Datastore Selected, Using VM "{1}" Default "{2}"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
     } else {
-        $DatastoreClusters = Get-DatastoreCluster -Verbose:$false
-        $Datastores = Get-Datastore -Verbose:$false
+        $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
+        $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false
         if ($DatastoreClusters) {
             $_Datastore = $DatastoreClusters | Where-Object {$_.Name -like $vCenterDataStore}
         }
@@ -944,7 +944,7 @@ function Add-DisktoVM {
     #region Create Configure Disk
 
     #region Create Disk on VM
-    $_VM | New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
+    $_VM | VMware.VimAutomation.Core\New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
 
     Write-Verbose ('{0}: Disk Created on VM "{1}" at "{2}" GB as "{3}" on Datastore "{4}"' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$ServerDiskType,$_Datastore.Name)
     #endregion
