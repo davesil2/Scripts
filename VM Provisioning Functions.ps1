@@ -614,13 +614,13 @@ function Add-VMtoDomain {
     Write-Verbose ('{0}: VALIDATED - VM "{1}" Located in vCenter "{2}"' -f (get-date).tostring(),$ServerName,$_vCenter.Name)
     if ($ServerOSType -eq 'Windows') {
         $Script = ('ping {0} -n 1' -f $ADDomainName)
-        $Result = Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -Verbose:$false
+        $Result = VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -Verbose:$false
         if ($result -notlike '*Lost = 0*') {
             Write-Error ('domain not available on VM, check network') -ErrorAction Stop
         }
     } else {
         $Script = ('Ping {0} -c 1' -f $ADDomainName)
-        $Result = Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -ScriptType bash -Verbose:$false
+        $Result = VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -ScriptType bash -Verbose:$false
         if ($result -notlike '*0% packet loss*') {
             Write-Error ('domain not available on VM, Check network!') -ErrorAction Stop
         }
@@ -653,7 +653,7 @@ function Add-VMtoDomain {
     } else {
         $Script = ('domainjoin-cli join --ou {0} {1} {2} {3}; history -c' -f $serveroupath, $ADDomainName, $creds.GetNetworkCredential().UserName, $creds.GetNetworkCredential().Password) 
     }
-    $result = Invoke-VMScript -ScriptText $Script -VM $_VM -GuestCredential $ServerOSCreds -ErrorAction SilentlyContinue -Verbose:$false
+    $result = VMware.VimAutomation.Core\Invoke-VMScript -ScriptText $Script -VM $_VM -GuestCredential $ServerOSCreds -ErrorAction SilentlyContinue -Verbose:$false
 
     Write-Verbose ('{0}: Executed Join to AD Domain "{1}" in OU Path "{2}"' -f (get-date).tostring(),$ADDomainName,$_ServerOUPath.distinguishedName)
 
@@ -740,23 +740,23 @@ function Add-VMtoDomain {
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false -OutBuffer $null | Out-Null
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false Out-Null
         #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
         
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
     } else {
         #Configure Sudoers file
         $Script = ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins"
-        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
         #Configure SSH Allowed
         $Script = ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName)
         $Script = { sed -i "s/linux^admins/linux^admins srv-$(hostname | tr /A-Z/ /a-z/)-ssh/" /etc/ssh/sshd_config }
-        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
         ##Update DNS registration
         $Script = { /opt/pbis/bin/update-dns }
-        Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
     }
     #endregion
 
@@ -1444,7 +1444,7 @@ function Enable-WSMANwithSSL {
 
     #Enable PS Remoting if not already enabled
     if (-Not $_Session -and $_VM) {
-        Invoke-VMScript -VM $_VM -GuestCredential $ServerCreds -ScriptText "Enable-PSRemoting -Force"
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerCreds -ScriptText "Enable-PSRemoting -Force"
 
         if ($ServerCreds) {
             $_Session = New-PSSession -ComputerName $ServerName -Credential $ServerCreds
