@@ -60,7 +60,7 @@ function Test-PSModuleInstalled {
     Param(
         # PS Session to use (get from test-psremoting)
         [Parameter(Mandatory=$true)]
-        [pssession]
+        [System.Management.Automation.Runspaces.PSSession]
         $Session,
 
         # Name of PS Module to Check for
@@ -127,7 +127,7 @@ function Test-SQLConnection {
     Param(
         # PS Remoting Session to use (get from Test-PSremoting function)
         [Parameter(Mandatory=$true)]
-        [pssession]
+        [System.Management.Automation.Runspaces.PSSession]
         $Session,
 
         # Name of SQL Instance
@@ -144,7 +144,7 @@ function Test-SQLConnection {
 
     #region Verify Session
     $_Session = $Session
-    if (-Not $_Session -or $_session.State -eq 'Opened') {
+    if (-Not $_Session -or $_session.State -ne 'Opened') {
         Write-Error ('PS Session is invalid') -ErrorAction Continue
         if ($Quiet) {
             Return $false
@@ -161,10 +161,17 @@ function Test-SQLConnection {
         }
         return $null
     }
+    if (-Not (Invoke-Command -Session $_Session -ScriptBlock {Import-Module SqlServer; Get-Module -Name SQLServer})) {
+        Write-Error ('SQLServer PowerShell Module Missing') -ErrorAction Continue
+        if ($Quiet) {
+            Return $false
+        }
+        return $null
+    }
     #endregion
 
     #region Connect to SQL
-    $Script = [scriptblock]::Create('$SQL = Get-Item "SQLSERVER:\SQL\{0}\{1}"' -f $_Session.ComputerName,$SQLInstance)
+    $Script = [scriptblock]::Create(('$SQL = Get-Item "SQLSERVER:\SQL\{0}\{1}"' -f $_Session.ComputerName,$SQLInstance))
     Invoke-Command -Session $_Session -ScriptBlock $Script -ErrorAction SilentlyContinue | Out-Null
     $_Status = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Status.ToString()} -ErrorAction SilentlyContinue
     #endregion
@@ -205,7 +212,7 @@ function Test-SQLDBExists {
     Param(
         # PS Remoting Session to connect to server (use Test-PSRemoting function)
         [Parameter(Mandatory=$true)]
-        [pssession]
+        [System.Management.Automation.Runspaces.PSSession]
         $Session,
 
         # Name of SQL Instance
@@ -227,7 +234,7 @@ function Test-SQLDBExists {
 
     #region Verify Session
     $_Session = $Session
-    if (-Not $_Session -or $_session.State -eq 'Opened') {
+    if (-Not $_Session -or $_session.State -ne 'Opened') {
         Write-Error ('PS Session is invalid') -ErrorAction Continue
         if ($Quiet) {
             return $false
@@ -257,7 +264,7 @@ function Test-SQLDBExists {
     #endregion
 
     #region Get Database from Server
-    $_db = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.databases[{0}]' -f $DBName)) -ErrorAction SilentlyContinue
+    $_db = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Databases} -ErrorAction SilentlyContinue | Where-Object {$_.name -eq "$dbname"}
     #endregion
 
     #region return results
@@ -290,7 +297,6 @@ function Test-SQLDBExists {
 
     #>
 }
-
 
 #endregion
 
@@ -1210,7 +1216,7 @@ function Set-DBMail {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1233,8 +1239,21 @@ function Set-DBMail {
     Write-Verbose ('{0}: VALIDATED - SQL Connection Validated' -f (get-date).tostring())
     #endregion
 
+    #region Get SQL Edition
+    $_Edition = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Edition} -ErrorAction SilentlyContinue
+
+    if (-Not $_Edition) {
+        Write-Error ('SQL Server did not return') -ErrorAction Stop
+    }
+
+    if ($_Edition -like '*express*') {
+        Write-Warning ('SQL Express does not support DB Mail')
+        return $null
+    }
+    #endregion
+
     #region Check DBMail status
-    if ($EnableDBMail -and (Invoke-Command -Session $_Session -ScriptBlock {$SQL.Configuration.DatabaseMailEnabled.RunValue} -eq 1)) {
+    if ($EnableDBMail -and (Invoke-Command -Session $_Session -ScriptBlock {$SQL.Configuration.DatabaseMailEnabled.RunValue}) -eq 1) {
         Write-Warning ('----- DB Mail Already Enabled on "{0}" -----' -f $ServerName)
     }
     #endregion
@@ -1429,7 +1448,7 @@ function New-DBMailOperator {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1452,43 +1471,51 @@ function New-DBMailOperator {
     Write-Verbose ('{0}: VALIDATED - SQL Connection Validated' -f (get-date).tostring())
     #endregion
 
+    #region Get SQL Edition
+    $_Edition = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Edition} -ErrorAction SilentlyContinue
+    #endregion
+
     #region Create Operator
-    Invoke-Command -Session $_Session -ScriptBlock {
-        Param(
-            $OperatorName,
-            $OperatorEmailAddress,
-            $OperatorEnabled,
-            $OperatorPagerDays,
-            $OperatorWeekdayStartTime,
-            $OperatorWeekdayStopTime,
-            $OperatorSaturdayStartTime,
-            $OperatorSaturdayStopTime,
-            $OperatorSundayStartTime,
-            $OperatorSundayStopTime
-        )
+    if ($_Edition -notlike '*express*') {
+        Invoke-Command -Session $_Session -ScriptBlock {
+            Param(
+                $OperatorName,
+                $OperatorEmailAddress,
+                $OperatorEnabled,
+                $OperatorPagerDays,
+                $OperatorWeekdayStartTime,
+                $OperatorWeekdayStopTime,
+                $OperatorSaturdayStartTime,
+                $OperatorSaturdayStopTime,
+                $OperatorSundayStartTime,
+                $OperatorSundayStopTime
+            )
 
-        $Operator = New-Object Microsoft.SqlServer.Management.Smo.Agent.Operator
+            $Operator = New-Object Microsoft.SqlServer.Management.Smo.Agent.Operator
 
-        $Operator.Parent = $SQL.JobServer
-        $Operator.Name = $OperatorName
-        $Operator.Enabled = $OperatorEnabled
-        $Operator.EmailAddress = $OperatorEmailAddress
-        $Operator.PagerDays = $OperatorPagerDays
-        $Operator.WeekdayPagerStartTime = $OperatorWeekdayStartTime
-        $Operator.WeekdayPagerStopTime = $OperatorWeekdayStopTime
-        $Operator.SaturdayPagerStartTime = $OperatorSaturdayStartTime
-        $Operator.SaturdayPagerStopTime = $OperatorSaturdayStopTime
-        $Operator.SundayPagerStartTime = $OperatorSundayStartTime
-        $Operator.SundayPagerStopTime = $OperatorSundayStopTime
-        $Operator.Create()
+            $Operator.Parent = $SQL.JobServer
+            $Operator.Name = $OperatorName
+            $Operator.Enabled = $OperatorEnabled
+            $Operator.EmailAddress = $OperatorEmailAddress
+            $Operator.PagerDays = $OperatorPagerDays
+            $Operator.WeekdayPagerStartTime = $OperatorWeekdayStartTime
+            $Operator.WeekdayPagerStopTime = $OperatorWeekdayStopTime
+            $Operator.SaturdayPagerStartTime = $OperatorSaturdayStartTime
+            $Operator.SaturdayPagerStopTime = $OperatorSaturdayStopTime
+            $Operator.SundayPagerStartTime = $OperatorSundayStartTime
+            $Operator.SundayPagerStopTime = $OperatorSundayStopTime
+            $Operator.Create()
 
-    } -ArgumentList $OperatorName,$OperatorEmailAddress,$OperatorEnabled,$OperatorPagerDays,$OperatorWeekdayStartTime,$OperatorWeekdayStopTime,$OperatorSaturdayStartTime,$OperatorSaturdayStopTime,$OperatorSundayStartTime,$OperatorSundayStopTime -ErrorAction Stop
+        } -ArgumentList $OperatorName,$OperatorEmailAddress,$OperatorEnabled,$OperatorPagerDays,$OperatorWeekdayStartTime,$OperatorWeekdayStopTime,$OperatorSaturdayStartTime,$OperatorSaturdayStopTime,$OperatorSundayStartTime,$OperatorSundayStopTime -ErrorAction Stop
 
-    Write-Verbose ('{0}: Operator "{1}" Created' -f (get-date).tostring(),$OperatorName)
+        Write-Verbose ('{0}: Operator "{1}" Created' -f (get-date).tostring(),$OperatorName)
+    } else {
+        Write-Warning ('Unable to Create Operator on SQL Express - SQL Agent not supported')
+    }
     #endregion
 
     #region Set Failsafe Operator
-    if ($SetAsFailsafeOperator) {
+    if ($SetAsFailsafeOperator -and $_Edition -notlike '*express*') {
         Invoke-Command -Session $_Session -ScriptBlock {
             param(
                 $OperatorName
@@ -1505,6 +1532,7 @@ function New-DBMailOperator {
 }
 
 function Set-DBConfig {
+    [CmdletBinding()]
     Param(
         # SQL Server to connect to with PS Remoting
         [parameter(Mandatory=$true)]
@@ -1561,7 +1589,7 @@ function Set-DBConfig {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1597,7 +1625,7 @@ function Set-DBConfig {
     #region Set DB Recovery Model
     foreach ($db in $DBNames) {
         if ($db -ne 'tempdb') {
-            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Databases[{0}].RecoveryModel = {1}' -f $db,$DBRecoveryModel)) -ErrorAction Stop
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Databases["{0}"].RecoveryModel = "{1}"' -f $db,$DBRecoveryModel)) -ErrorAction Stop
         }
 
         Write-Verbose ('{0}: Set DB "{1}" to Recovery Model "{2}"' -f (get-date).tostring(),$db,$DBRecoveryModel)
@@ -1776,7 +1804,7 @@ function Set-SSLforSQLServer {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -ErrorAction SilentlyContinue
     
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1786,9 +1814,9 @@ function Set-SSLforSQLServer {
     #endregion
 
     #region Check PS Session to Server as service account and create
-    $_svcAccountSession = Test-PSRemoting -ServerName $ServerName -ServerCreds $svcAccountCreds
+    $_svcAccountSession = Test-PSRemoting -ServerName $ServerName -ServerCreds $svcAccountCreds -ErrorAction SilentlyContinue
     
-    if (-Not $_svcAccountSession -or $_svcAccountSession -ne 'Opened') {
+    if ((-Not $_svcAccountSession) -or ($_svcAccountSession.State -ne 'Opened')) {
         Write-Error ('Service Account Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1796,7 +1824,7 @@ function Set-SSLforSQLServer {
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -erroraction SilentlyContinue)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1820,10 +1848,10 @@ function Set-SSLforSQLServer {
         Invoke-Command -Session $_Session -ScriptBlock {
             Param($ThumbPrint)
 
-            $SQLInstance = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\*MSSQL*' | Where-Object {$_.Property}
+            $SQLInstance = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\*MSSQL*\MSSQLServer\SuperSocketNetLib'
 
-            Set-ItemProperty -Path ('\{0}\MSSQLServer\SuperSocketNetLib' -f $SQLInstance.PSPath) -Name Certificate -Value $Thumbprint
-            Set-ItemProperty -Path ('\{0}\MSSQLServer\SuperSocketNetLib' -f $SQLInstance.PSPath) -Name ForceEncryption -Value 1
+            $SQLInstance | Set-ItemProperty -Name Certificate -Value $Thumbprint
+            $SQLInstance | Set-ItemProperty -Name ForceEncryption -Value 1
         } -ArgumentList $_Cert.Thumbprint -ErrorAction Stop
     } else {
         Write-Error ('Certificate Not Found on Server') -ErrorAction Stop
@@ -1888,7 +1916,7 @@ function Set-SQLMemConfig {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1931,7 +1959,7 @@ function Set-SQLMemConfig {
     Invoke-Command -Session $_Session -ScriptBlock {
         Param($MemoryLimitMB)
 
-        $SQL.Configuration.MaxServerMemory = $MemoryLimitMB
+        $SQL.Configuration.MaxServerMemory.ConfigValue = $MemoryLimitMB
         $SQL.Configuration.Alter()
     } -ArgumentList $MemoryLimitMB
 
@@ -1976,7 +2004,7 @@ function Set-SQLBackupConfig {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2062,7 +2090,7 @@ function Set-SQLJobHistory {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2085,19 +2113,31 @@ function Set-SQLJobHistory {
     Write-Verbose ('{0}: VALIDATED - SQL Connection Validated' -f (get-date).tostring())
     #endregion
 
+    #region Verify Edition is not SQLExpress
+    $_Edition = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Edition} -ErrorAction SilentlyContinue
+
+    if (-Not $_Edition) {
+        Write-Error ('Error getting info about SQL Server') -ErrorAction Stop
+    }
+    #endregion
+
     #region Set History Settings
-    Invoke-Command -Session $_Session -ScriptBlock {
-        Param(
-            $HistoryMax,
-            $JobHistoryMax
-        )
+    if ($_Edition -notlike '*express*') {
+        Invoke-Command -Session $_Session -ScriptBlock {
+            Param(
+                $HistoryMax,
+                $JobHistoryMax
+            )
 
-        $SQL.JobServer.MaximumHistoryRows = $HistoryMax
-        $SQL.JobServer.MaximumJobHistoryRows = $JobHistoryMax
+            $SQL.JobServer.MaximumHistoryRows = $HistoryMax
+            $SQL.JobServer.MaximumJobHistoryRows = $JobHistoryMax
 
-    } -ArgumentList $HistoryMax,$JobHistoryMax
+        } -ArgumentList $HistoryMax,$JobHistoryMax
 
-    Write-Verbose ('{0}: Updated Job History to "{1}" and History to "{2}"' -f (get-date).tostring(),$JobHistoryMax,$HistoryMax)
+        Write-Verbose ('{0}: Updated Job History to "{1}" and History to "{2}"' -f (get-date).tostring(),$JobHistoryMax,$HistoryMax)
+    } else {
+        Write-Warning ('SQL Edition is Express which does not support SQL Agent')
+    }
     #endregion
 }
 
@@ -2178,7 +2218,7 @@ function Set-SQLListener {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2222,11 +2262,11 @@ function Set-SQLListener {
 
     #region Configure Listener
     if ($EnableTCP -ne $SMOTCP.IsEnabled) {
-        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SMOTCP.IsEnabled = {0}; $SMOTCP.Alter()' -f $EnableTCP))) -ErrorAction Stop
+        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SMOTCP.IsEnabled = {0}; $SMOTCP.Alter()' -f $EnableTCP.ToString()))) -ErrorAction Stop
         Write-Verbose ('{0}: Updated TCP Protocol to "{1}"' -f (get-date).tostring(),$EnableTCP.ToString())
     }
     if ($EnableNamedPipes -ne $SMONP.IsEnabled) {
-        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SMONP.IsEnabled = {0}; $SMONP.Alter()' -f $EnableNamedPipes))) -ErrorAction Stop
+        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SMONP.IsEnabled = {0}; $SMONP.Alter()' -f $EnableNamedPipes.ToString()))) -ErrorAction Stop
         Write-Verbose ('{0}: Updated NamedPipes Protocol to "{1}"' -f (get-date).tostring(),$EnableNamedPipes.ToString())
     }
 
@@ -2269,7 +2309,7 @@ function Grant-SQLServiceRights {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2278,7 +2318,7 @@ function Grant-SQLServiceRights {
 
     #region Verify Services Exist
     foreach ($_ServiceName In $ServiceNames) {
-        $_Service = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Service -Name $_ServiceName")) -ErrorAction SilentlyContinue
+        $_Service = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Service -Name '$_ServiceName'")) -ErrorAction SilentlyContinue
     
         if (-Not $_Service) {
             Write-Error ('Service "{0}" not Found on Server' -f $_ServiceName) -ErrorAction Stop
@@ -2366,6 +2406,7 @@ function Grant-SQLServiceRights {
 }
 
 function Enable-FSRMforSQL {
+    [CmdletBinding()]
     Param(
         # Server to Connect and configure SQL History
         [Parameter(Mandatory=$true)]
@@ -2452,13 +2493,19 @@ function Enable-FSRMforSQL {
         # Paths for Logs to apply file screen
         [Parameter(Mandatory=$false)]
         [string[]]
-        $LogPaths = ('E:\SQLLOGS01','E:\TDBLOGS01')
+        $LogPaths = ('E:\SQLLOGS01','E:\TDBLOGS01'),
+
+        # Name of SQL Instance
+        [Parameter(Mandatory=$false)]
+        [ValidateNotNullOrEmpty()]
+        [String]
+        $SQLInstance = 'Default'
     )
 
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2489,13 +2536,13 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Verify SMTP Relay
-    if (-not (Test-Ping -Server $SMTPRelay -Quiet)) {
+    if (-not (Test-Ping -Server $SMTPRelay -Quiet -Verbose:$false)) {
         Write-Error ('SMTP Relay Server "{0}" does not respond to ping' -f $SMTPRelay)
     }
 
     Write-Verbose ('{0}: VALIDATED - SMTP Relay "{1}" resolves and responds to ping' -f (get-date).tostring(),$SMTPRelay)
 
-    if (-Not (Test-Port -Server $SMTPRelay -Port 25).Successful) {
+    if (-Not (Test-Port -Server $SMTPRelay -Port 25 -Verbose:$false).Successful) {
         Write-Error ('SMTP Relay "{0}" not responding on port "25"' -f $SMTPRelay)
     }
 
@@ -2521,7 +2568,15 @@ function Enable-FSRMforSQL {
 
     #region Install FSRM Feature
     if ($InstallFSRM) {
-        $_InstallResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Add-WindowsFeature FS-Resource-Manager -IncludeManagementTools:$IncludeManagementTools -IncludeAllSubfeature:$IncludeAllSubFeatures")) -ErrorAction SilentlyContinue
+        
+        #$_InstallResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Add-WindowsFeature FS-Resource-Manager -IncludeManagementTools:$IncludeManagementTools -IncludeAllSubfeature:$IncludeAllSubFeatures"))
+        $_InstallResult = Invoke-Command -Session $_Session -ScriptBlock {
+            Param(
+                $IncludeManagementTools,
+                $IncludeAllSubFeatures
+            )
+            Add-WindowsFeature FS-Resource-Manager -IncludeManagementTools:$IncludeManagementTools -IncludeAllSubfeature:$IncludeAllSubFeatures
+        } -ArgumentList $IncludeManagementTools,$IncludeAllSubFeatures -ErrorAction SilentlyContinue
 
         if (-Not $_InstallResult.Success) {
             Write-Error ('Install of FSRM feature did not succeed') -ErrorAction Stop
@@ -2603,7 +2658,7 @@ function Enable-FSRMforSQL {
 
     #region Create File Screen for Backups
     $_FSRMScreens = Invoke-Command -Session $_Session -ScriptBlock {Get-FSRMFileScreen} -ErrorAction SilentlyContinue
-    foreach ($_Path in $BackupPaths) {
+    foreach ($_Path in $BackupPaths | Where-Object {$_}) {
         if ($_Path -notin $_FSRMScreens.Path) {
             $_FileScreenResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('New-FSRMFileScreen -Path {0} -IncludeGroup "SQL Backup Files" -Active -Notification $FSRMAction' -f $_Path))
             
@@ -2616,7 +2671,7 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Create File Screen for Data Paths
-    foreach ($_Path in $DataPaths) {
+    foreach ($_Path in $DataPaths | Where-Object {$_}) {
         if ($_Path -notin $_FSRMScreens.Path) {
             $_FileScreenResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('New-FSRMFileScreen -Path {0} -IncludeGroup "SQL Data Files" -Active -Notification $FSRMAction' -f $_Path))
             
@@ -2629,9 +2684,9 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Create File Screen for Log Paths
-    foreach ($_Path in $LogPaths) {
+    foreach ($_Path in $LogPaths | Where-Object {$_}) {
         if ($_Path -notin $_FSRMScreens.Path) {
-            $_FileScreenResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('New-FSRMFileScreen -Path {0} -IncludeGroup "SQL Log Files" -Active -Notification $FSRMAction' -f $_Path))
+            $_FileScreenResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('New-FSRMFileScreen -Path "{0}" -IncludeGroup "SQL Log Files" -Active -Notification $FSRMAction' -f $_Path))
             
             if (-not $_FileScreenResult) {
                 Write-Error ('Error creating File Screen for path "{0}"' -f $_Path) -ErrorAction Stop
@@ -2642,13 +2697,14 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Create File Screen for MSSQL Data Path
+    $_SQLDBPath = Invoke-Command -Session $_Session -ScriptBlock {$SQL.MasterDBPath}
     $_AllPatterResult = Invoke-Command -Session $_Session -ScriptBlock {New-FsrmFileScreen -Path $sql.MasterDBPath -IncludeGroup 'SQL All Files' -Active -Notification $FSRMAction}
 
     if (-Not $_AllPatterResult) {
-        Write-Error ('Error creating File Screen for path "{0}"' -f $_Path) -ErrorAction Stop
+        Write-Error ('Error creating File Screen for path "{0}"' -f $_SQLDBPath) -ErrorAction Stop
     }
 
-    Write-Verbose ('{0}: Created File Screen for "{1}"' -f (get-date).tostring(),$_Path)
+    Write-Verbose ('{0}: Created File Screen for "{1}"' -f (get-date).tostring(),$_SQLDBPath)
     #endregion
 
 }
