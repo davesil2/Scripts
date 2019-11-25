@@ -732,7 +732,7 @@ function New-SQLServiceAccount {
         [parameter(Mandatory=$false)]
         [ValidateNotNullorEmpty()]
         [securestring]
-        $svcAccountPassword = (Convertto-Securstring (Get-RandomPassword) -asplaintext -force),
+        $svcAccountPassword = (Convertto-Securestring (Get-RandomPassword) -asplaintext -force),
 
         # OU Path to Create Account in (reccommended to use 'OU=Service Accounts,OU=EnterpriseAdmin,DC=domain,DC=com')
         [parameter(Mandatory=$false)]
@@ -968,7 +968,7 @@ function New-ADGroupforSQL {
     #region Add Members to Group
     if ($GroupMembers -and $_Group) {
         foreach ($_GroupMember in $GroupMembers) {
-            $_ADobject = Get-ADObject -filter "Name -like $_ -or SamAccountName -like $_" -ErrorAction SilentlyContinue
+            $_ADobject = Get-ADObject -filter "Name -like '$_GroupMember' -or SamAccountName -like '$_GroupMember'" -ErrorAction SilentlyContinue
             
             if (-Not $_ADobject) {
                 Write-Warning ('ADObject "{0}" not found' -f $_GroupMember)
@@ -1033,24 +1033,21 @@ function Grant-ServerAccess {
     )
 
     #region Verify Session
-    $_Session = Test-PSRemoting -ServerName $ServerName -Credential $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     
-    if (-Not $_session -or $_session.state -ne 'Open') {
+    if (-Not $_session -or $_session.state -ne 'Opened') {
         Write-Error ('problem with session') -ErrorAction Stop
     }
     #endregion
 
     #region Verify Groups on Server
-    $_LocalGroups = @()
-    foreach ($Group in $LocalGroups) {
-        $_Group = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-LocalGroupMember -Group $Group -ErrorAction SilentlyContinue"))
+    $_LocalGroups = Invoke-Command -Session $_Session -ScriptBlock {Get-LocalGroup} -ErrorAction SilentlyContinue
 
-        if (-Not $_Group) {
-            Write-Warning ('Group "{0}" not found' -f $Group)
-        } else {
-            $_LocalGroups += $Group
-        }
+    if (-Not $_LocalGroups) {
+        Write-Error ('No Local Groups Returned - error in connection') -ErrorAction Stop
     }
+
+    $_LocalGroups = $_LocalGroups | Where-Object {$_.name -in $LocalGroups}
 
     if (-Not $_LocalGroups) {
         Write-Error ('No Groups from "{0}" were found on remote host "{1}"' -f ($LocalGroups -join ','),$Session.ComputerName) -ErrorAction Stop
@@ -1791,15 +1788,15 @@ function Set-SSLforSQLServer {
     #region Check PS Session to Server as service account and create
     $_svcAccountSession = Test-PSRemoting -ServerName $ServerName -ServerCreds $svcAccountCreds
     
-    if (-Not $_Session) {
-        Write-Error ('Session Validation Failed') -ErrorAction Stop
+    if (-Not $_svcAccountSession -or $_svcAccountSession -ne 'Opened') {
+        Write-Error ('Service Account Session Validation Failed') -ErrorAction Stop
     }
 
     Write-Verbose ('{0}: VALIDATED - Service Account Session to Server Validated' -f (get-date).tostring())
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -erroraction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2117,7 +2114,7 @@ function Set-SQLPSExecutionPolicy {
         $ServerCreds,
 
         [Parameter(Mandatory=$false)]
-        [ValueSet('Unrestricted','RemoteSigned','AllSigned','Bypass','Default','Restricted')]
+        [ValidateSet('Unrestricted','RemoteSigned','AllSigned','Bypass','Default','Restricted')]
         [string]
         $ExecutionPolicy = 'Unrestricted'
     )
@@ -2125,7 +2122,7 @@ function Set-SQLPSExecutionPolicy {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
