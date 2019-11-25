@@ -2061,3 +2061,136 @@ function Write-ZeroFile {
 
     #>
 }
+
+function Set-ADPhoto {
+    [CmdletBinding()]
+    Param(
+        # Employee ID Valude in AD Attributed named as such
+        [Parameter(Mandatory=$true)]
+        [string]
+        $EmployeeID,
+        
+        # Path to File of Photo Image
+        [Parameter(Mandatory=$true)]
+        [string]
+        $PhotoFile,
+
+        # starting quality of image (used with resize)
+        [Parameter(Mandatory=$false)]
+        [int]
+        $Quality = 80,
+        
+        # Resize the Photo from File provided
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $Resize,
+
+        # Overwrite the existing Photo for User AD object
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $OverwritePhoto
+    )
+
+    #region Validate Employee
+    $_Searcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
+    $_Searcher.Filter = "(&(objectClass=user)(employeeID=$EmployeeID))"
+    $_ADUser = $_Searcher.FindAll()
+
+    if ($_ADUser.Count -eq 0) {
+        Write-Error ('No Users Found with EmployeeID "{0}"' -f $EmployeeID) -ErrorAction Stop
+    }
+    if ($_ADUser.Count -gt 1) {
+        Write-Error ('More than one user found with EmployeeID "{0}"' -f $EmployeeID) -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Found User "{1}" with EmployeeID "{2}"' -f (get-date).ToString(),$_ADUser.DisplayName, $EmployeeID)
+    #endregion
+
+    #region Validate Image File Path
+    $_PhotoFilePath = Get-Item -Path $PhotoFile
+
+    if ($_PhotoFilePath.Count -gt 1) {
+        Write-Error ('More than one file found in path "{0}"' -f $PhotoFile) -ErrorAction Stop
+    }
+
+    if ($_PhotoFilePath.Count -eq 0) {
+        Write-Error ('No File found for path') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Found File "{1}"' -f (get-date).tostring(),$PhotoFile)
+    #endregion
+
+    #region Validate Image Load
+    try {    
+        $_Image = New-Object -ComObject wia.Imagefile
+        $_Image.LoadFile($_PhotoFilePath.FullName)
+    } catch {
+        Write-Error ('Error loading File Image "{0}"' -f $PhotoFile) -ErrorAction Stop
+    }
+    
+    if (-Not $_Image) {
+        Write-Error ('The Image File did not load properly.') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Image "{1}" loaded' -f $_PhotoFilePath.FullName)
+    #endregion
+
+    #region Validate Image Size
+    if (-Not $Resize -and ($_Image.Height -gt 96 -or $_Image.Width -gt 96)) {
+        Write-Error ('Image Size is Larger than 96x96, please use "resize" option')
+    }
+    #endregion
+
+    #region Resize Image if appropriate
+    $_ImageProcess = New-Object -ComObject Wia.ImageProcess
+
+    $_ImageProcess.Filters.Add($_ImageProcess.FilterInfos.Item('Scale').FilterID)
+    $_ImageProcess.Filters.Add($_ImageProcess.FilterInfos.Item('Convert').FilterID)
+    $_ImageProcess.Filters.Item(1).Properties.Item("PreserveAspectRatio") = $true
+	$_ImageProcess.Filters.Item(1).Properties.Item("MaximumHeight") = 96
+	$_ImageProcess.Filters.Item(1).Properties.Item("MaximumWidth") = 96
+    $_ImageProcess.Filters.Item(2).Properties.Item("FormatID") = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
+    
+    if (-Not $Resize -and $_Image.FileData.BinaryData.Length -gt 100kb) {
+        Write-Error ('Image File is too Large at "{0}KB", try using resize' -f $_Image.FileData.BinaryData.Length/1Kb) -ErrorAction Stop
+    }
+    
+    if (-Not $Resize -and ($_Image.Height -gt 96 -or $_image.Width -gt 96)) {
+        Write-Error ('Image Width "{0}" and Height "{1}" need to be 96x96' -f $_Image.Width, $_Image.Height)
+    }
+    
+    while ($_Image.FileData.BinaryData.Length -gt 100kb) {
+        $_ImageProcess.Filters.Item(2).Properties.Item('Quality') = $Quality
+        $_Image = $_ImageProcess.Apply($_Image)
+        $Quality -= 10
+    }
+    
+    Write-Verbose ('{0}: Image Size is "{1}" x "{2}" at a size of "{3}"KB' -f (get-date).ToString(),$_Image.Width,$_Image.Height,($_Image.FileData.BinaryData.Length/1kb))
+    #endregion
+
+    #region Update Photo Image for user
+    if (-not ($_ADUser.Properties['thumbnailPhoto']) -or $OverwritePhoto) {
+        $_ADUser.Properties['ThumbnailPhoto'].Clear()
+        $_ADUser.Properties['ThumbnailPhoto'].Value = $_Image.FileData.BinaryData
+        $_ADUser.SetInfo()
+    
+        Write-Verbose ('{0}: Updated user "{1}" Thumbnail Photo!')
+    } else {
+        Write-Verbose ('{0}: Photo Not Updated due to existing image!')
+    }
+    #endregion
+
+    <#
+    .SYNOPSIS
+
+    Set the Thumbnail Photo for ADuser by EmployeeID Attribute
+
+    .DESCRIPTION
+
+    Using EmployeeID Attribute on User, assign a photo image in Active Directory.
+
+        * The function can optionally resize the photo image provided from file
+
+        * The function can optionally overwrite the existing image if desired
+    #>
+}
