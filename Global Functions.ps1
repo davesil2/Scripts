@@ -2094,7 +2094,7 @@ function Set-ADPhoto {
     #region Validate Employee
     $_Searcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
     $_Searcher.Filter = "(&(objectClass=user)(employeeID=$EmployeeID))"
-    $_ADUser = $_Searcher.FindAll()
+    $_ADUser = [adsi]$_Searcher.FindAll().Path
 
     if ($_ADUser.Count -eq 0) {
         Write-Error ('No Users Found with EmployeeID "{0}"' -f $EmployeeID) -ErrorAction Stop
@@ -2132,7 +2132,7 @@ function Set-ADPhoto {
         Write-Error ('The Image File did not load properly.') -ErrorAction Stop
     }
 
-    Write-Verbose ('{0}: VALIDATED - Image "{1}" loaded' -f $_PhotoFilePath.FullName)
+    Write-Verbose ('{0}: VALIDATED - Image "{1}" loaded' -f (get-date).tostring(),$_PhotoFilePath.FullName)
     #endregion
 
     #region Validate Image Size
@@ -2169,10 +2169,10 @@ function Set-ADPhoto {
     #endregion
 
     #region Update Photo Image for user
-    if (-not ($_ADUser.Properties['thumbnailPhoto']) -or $OverwritePhoto) {
-        $_ADUser.Properties['ThumbnailPhoto'].Clear()
-        $_ADUser.Properties['ThumbnailPhoto'].Value = $_Image.FileData.BinaryData
-        $_ADUser.SetInfo()
+    if (-not ($_ADUser.Properties["thumbnailPhoto"].value) -or $OverwritePhoto) {
+        $_ADUser.Properties["thumbnailPhoto"].Clear()
+        $_ADUser.Properties["thumbnailPhoto"].Value = $_Image.FileData.BinaryData
+        $_ADUser.CommitChanges()
     
         Write-Verbose ('{0}: Updated user "{1}" Thumbnail Photo!')
     } else {
