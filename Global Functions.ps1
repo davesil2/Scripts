@@ -2159,7 +2159,7 @@ function Set-ADPhoto {
         Write-Error ('Image Width "{0}" and Height "{1}" need to be 96x96' -f $_Image.Width, $_Image.Height)
     }
     
-    while ($_Image.FileData.BinaryData.Length -gt 100kb -or $_Image.Height -gt 96 -or $_Image.Width -gt 96)) {
+    while ($_Image.FileData.BinaryData.Length -gt 100kb -or $_Image.Height -gt 96 -or $_Image.Width -gt 96) {
         $_ImageProcess.Filters.Item(2).Properties.Item('Quality') = $Quality
         $_Image = $_ImageProcess.Apply($_Image)
         $Quality -= 10
