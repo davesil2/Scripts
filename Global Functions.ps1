@@ -2158,16 +2158,16 @@ function Set-ADPhoto {
     }
     
     if (-Not $Resize -and ($_Image.Height -gt 96 -or $_image.Width -gt 96)) {
-        Write-Error ('Image Width "{0}" and Height "{1}" need to be 96x96' -f $_Image.Width, $_Image.Height)
+        Write-Error ('Image Width "{0}" and Height "{1}" need to be 96x96' -f $_Image.HorizontalResolution, $_Image.VerticalResolution)
     }
     
-    while ($_Image.FileData.BinaryData.Length -gt 100kb -and ($_Image.Height -gt 96 -or $_Image.Width -gt 96)) {
+    while ($_Image.FileData.BinaryData.Length -gt 100kb -and ($_Image.HorizontalResolution -gt 96 -or $_Image.VerticalResolution -gt 96)) {
         $_ImageProcess.Filters.Item(2).Properties.Item('Quality') = $Quality
         $_Image = $_ImageProcess.Apply($_Image)
         $Quality -= 10 
     }
     
-    Write-Verbose ('{0}: Image Size is "{1}" x "{2}" at a size of "{3}"KB' -f (get-date).ToString(),$_Image.Width,$_Image.Height,($_Image.FileData.BinaryData.Length/1kb))
+    Write-Verbose ('{0}: Image Size is "{1}" x "{2}" at a size of "{3}"KB' -f (get-date).ToString(),$_Image.HorizontalResolution,$_Image.VerticalResolution,($_Image.FileData.BinaryData.Length/1kb))
     #endregion
 
     #region Update Photo Image for user
@@ -2176,9 +2176,9 @@ function Set-ADPhoto {
         $_ADUser.Properties["thumbnailPhoto"].Value = $_Image.FileData.BinaryData
         $_ADUser.CommitChanges()
     
-        Write-Verbose ('{0}: Updated user "{1}" Thumbnail Photo!')
+        Write-Verbose ('{0}: Updated user "{1}" Thumbnail Photo!' -f (get-date).tostring(),$_ADUser.Properties['DisplayName'].Value)
     } else {
-        Write-Verbose ('{0}: Photo Not Updated due to existing image!')
+        Write-Verbose ('{0}: Photo Not Updated due to existing image!' -f (get-date).tostring())
     }
     #endregion
 
