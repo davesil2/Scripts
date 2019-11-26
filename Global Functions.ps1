@@ -2105,7 +2105,7 @@ function Set-ADPhoto {
 
     $_ADUser = [adsi]$_ADResult.Path
 
-    Write-Verbose ('{0}: VALIDATED - Found User "{1}" with EmployeeID "{2}"' -f (get-date).ToString(),$_ADUser.Properties['DisplayName'], $EmployeeID)
+    Write-Verbose ('{0}: VALIDATED - Found User "{1}" with EmployeeID "{2}"' -f (get-date).ToString(),$_ADUser.Properties['DisplayName'].Value, $EmployeeID)
     #endregion
 
     #region Validate Image File Path
