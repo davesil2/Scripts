@@ -2162,7 +2162,7 @@ function Set-ADPhoto {
     while ($_Image.FileData.BinaryData.Length -gt 100kb -or $_Image.Height -gt 96 -or $_Image.Width -gt 96) {
         $_ImageProcess.Filters.Item(2).Properties.Item('Quality') = $Quality
         $_Image = $_ImageProcess.Apply($_Image)
-        $Quality -= 10
+        $Quality -= 10 
     }
     
     Write-Verbose ('{0}: Image Size is "{1}" x "{2}" at a size of "{3}"KB' -f (get-date).ToString(),$_Image.Width,$_Image.Height,($_Image.FileData.BinaryData.Length/1kb))
