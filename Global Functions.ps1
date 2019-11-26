@@ -2094,16 +2094,18 @@ function Set-ADPhoto {
     #region Validate Employee
     $_Searcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]"")
     $_Searcher.Filter = "(&(objectClass=user)(employeeID=$EmployeeID))"
-    $_ADUser = [adsi]$_Searcher.FindAll().Path
+    $_ADResult = $_Searcher.FindAll()
 
-    if ($_ADUser.Count -eq 0) {
+    if ($_ADResult.Count -eq 0) {
         Write-Error ('No Users Found with EmployeeID "{0}"' -f $EmployeeID) -ErrorAction Stop
     }
-    if ($_ADUser.Count -gt 1) {
+    if ($_ADResult.Count -gt 1) {
         Write-Error ('More than one user found with EmployeeID "{0}"' -f $EmployeeID) -ErrorAction Stop
     }
 
-    Write-Verbose ('{0}: VALIDATED - Found User "{1}" with EmployeeID "{2}"' -f (get-date).ToString(),$_ADUser.DisplayName, $EmployeeID)
+    $_ADUser = [adsi]$_ADResult.Path
+
+    Write-Verbose ('{0}: VALIDATED - Found User "{1}" with EmployeeID "{2}"' -f (get-date).ToString(),$_ADUser.Properties['DisplayName'], $EmployeeID)
     #endregion
 
     #region Validate Image File Path
