@@ -23,6 +23,7 @@
 #>
 
 function New-VMfromTemplate {
+    [CmdletBinding()]
     param(
         # vCenter Server Fully Qualified Domain Name
         [parameter(Mandatory=$true)]
@@ -492,6 +493,7 @@ function New-VMfromTemplate {
 }
 
 function Add-VMtoDomain {
+    [CmdletBinding()]
     param(
         #Fully Qualified Domain Name of vCenter Server where server exists
         [parameter(Mandatory=$true)]
@@ -797,6 +799,7 @@ function Add-VMtoDomain {
 }
 
 function Add-DisktoVM {
+    [CmdletBinding()]
     param(
         #Fully Qualified Domain Name to vCenter Server
         [parameter(Mandatory=$true)]
@@ -1008,6 +1011,7 @@ function Add-DisktoVM {
 }
 
 function New-SSLCertificate {
+    [CmdletBinding()]
     param(
         #Certificate name (usually the short name)    
         [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
@@ -1326,6 +1330,7 @@ $Array | foreach-object {New-SSLCertificate -Name $_.Name -TemplateName $_.Templ
 }
 
 function Enable-WSMANwithSSL {
+    [CmdletBinding()]
     param(
         # vCenter Fully Qualified Domain Name
         [parameter(Mandatory=$false)]
@@ -1489,6 +1494,7 @@ function Enable-WSMANwithSSL {
 }
 
 function Install-IISServer {
+    [CmdletBinding()]
     Param(
         # Name of Server that IIS will be installed on
         [Parameter(Mandatory=$True)]
