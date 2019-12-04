@@ -1705,7 +1705,7 @@ function Add-DBExecRole {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1730,7 +1730,7 @@ function Add-DBExecRole {
 
     #region Check if DB(s) exist
     foreach ($db in $DBNames) {
-        if (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet) {
+        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet)) {
             Write-Error ('Selected DB Name "{0}" does not exist on SQL Server' -f $db) -ErrorAction Stop
         }
 
