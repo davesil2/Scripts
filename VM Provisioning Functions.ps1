@@ -742,7 +742,7 @@ function Add-VMtoDomain {
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false Out-Null
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false
         #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
         
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
