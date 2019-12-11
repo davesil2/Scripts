@@ -762,6 +762,10 @@ function New-SQLServiceAccount {
         [boolean]
         $ConfigureSPN = $true,
 
+        [parameter(Mandatory=$false)]
+        [string]
+        $ServerName,
+
         # SPN Suffixes to add
         [parameter(Mandatory=$false)]
         [string[]]
@@ -852,7 +856,7 @@ function New-SQLServiceAccount {
     #endregion
 
     #region Configure Kerberos SPN's for Server
-    if ($SPNSuffixes -and $ConfigureSPN) {
+    if ($SPNSuffixes -and $ConfigureSPN -and $ServerName) {
         $List = @()
         $List += (('MSSQLSvc/{0}' -f $ServerName),('MSSQLSvc/{0}:1433' -f $ServerName))
         $List += $SPNSuffixes | ForEach-Object {(('MSSQLSvc/{0}.{1}' -f $ServerName,$_),('MSSQLSvc/{0}.{1}:1433' -f $ServerName,$_))}
@@ -877,7 +881,7 @@ function New-SQLServiceAccount {
     #endregion
 
     if (-Not $_svcAccountCreds) {
-        return (Test-Credential $svcAccountName,$svcAccountPassword)
+        return (Test-Credential -UserName $svcAccountName -Password $svcAccountPassword)
     } else {
         return $_svcAccountCreds
     }
