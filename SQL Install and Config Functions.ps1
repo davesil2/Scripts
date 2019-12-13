@@ -12,6 +12,10 @@ function Test-PSRemoting {
         [PSCredential]
         $ServerCreds,
 
+        [parameter(Mandatory=$false)]
+        [ValidateSet('Kerberos','Credssp')]
+        $AuthentiationType = 'Kerberos',
+
         # Return True or False based on success/failure
         [parameter(Mandatory=$false)]
         [switch]
@@ -20,9 +24,9 @@ function Test-PSRemoting {
 
     #region Create Session
     if ($ServerCreds) {
-        $_Session = New-PSSession -ComputerName $ServerName -Credential $ServerCreds -Authentication Kerberos -ErrorAction SilentlyContinue
+        $_Session = New-PSSession -ComputerName $ServerName -Credential $ServerCreds -Authentication $AuthentiationType -ErrorAction SilentlyContinue
     } else {
-        $_Session = New-PSSession -ComputerName $ServerName -Authentication Kerberos -ErrorAction SilentlyContinue
+        $_Session = New-PSSession -ComputerName $ServerName -Authentication $AuthentiationType -ErrorAction SilentlyContinue
     }
     #endregion
 
@@ -409,7 +413,7 @@ function Install-SSLCertificate {
     )
 
     #region Verify Server Connection
-    $_Session = Test-PSRemoting -ServeName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('problem connection to server') -ErrorAction Continue
         return $null
@@ -808,7 +812,10 @@ function New-SQLServiceAccount {
     if ($CreateServiceAccount) {
         if ($DomainCreds) {
             New-ADUser -Name $svcAccountName -SamAccountName $svcAccountName -UserPrincipalName ('{0}@{1}' -f $svcAccountName,$UPNDomain) -PasswordNeverExpires $true -CannotChangePassword $true -Path $_svcAccountOUPath.DistinguishedName -Credential $DomainCreds -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 5
+            While (-Not (Get-ADUser -filter "name -like '$svcAccountName'" -ErrorAction SilentlyContinue)) {
+                Start-Sleep 5
+                Write-Verbose ("{0}: `t`tWaiting for AD Replication" -f (get-date).tostring())
+            }
             
             $_svcAccount = Get-ADUser $svcAccountName -ErrorAction SilentlyContinue
             if (-Not $_svcAccount) {
@@ -819,7 +826,10 @@ function New-SQLServiceAccount {
             $_svcAccount | Enable-ADAccount -Credential $DomainCreds -ErrorAction SilentlyContinue | Out-Null
         } else {
             New-ADUser -Name $svcAccountName -SamAccountName $svcAccountName -UserPrincipalName ('{0}@{1}' -f $svcAccountName,$UPNDomain) -PasswordNeverExpires $true -CannotChangePassword $true -Path $_svcAccountOUPath.DistinguishedName  -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 5
+            While (-Not (Get-ADUser -filter "name -like '$svcAccountName'" -ErrorAction SilentlyContinue)) {
+                Start-Sleep 5
+                Write-Verbose ("{0}: `t`tWaiting for AD Replication" -f (get-date).tostring())
+            }
             
             $_svcAccount = Get-ADUser $svcAccountName -ErrorAction SilentlyContinue
             if (-Not $_svcAccount) {
@@ -1048,6 +1058,8 @@ function Grant-ServerAccess {
     if (-Not $_session -or $_session.state -ne 'Opened') {
         Write-Error ('problem with session') -ErrorAction Stop
     }
+
+    Write-Verbose ('{0}: VALIDATED - Session to Server is ready!' -f (get-date).tostring())
     #endregion
 
     #region Verify Groups on Server
@@ -1263,7 +1275,7 @@ function Set-DBMail {
     #endregion
 
     #region Check DBMail Account
-    $_Account = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Mail.Accounts[{0}]' -f $DBMailAccountName)) -ErrorAction SilentlyContinue
+    $_Account = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Mail.Accounts["{0}"]' -f $DBMailAccountName)) -ErrorAction SilentlyContinue
     
     if ($CreateDBMailAccount) {
         if ($_Account) {
@@ -1281,7 +1293,7 @@ function Set-DBMail {
     #endregion
 
     #region Check DBMail Profile
-    $_Profile = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Mail.Profiles[{0}]' -f $DBMailProfileName)) -ErrorAction SilentlyContinue
+    $_Profile = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Mail.Profiles["{0}"]' -f $DBMailProfileName)) -ErrorAction SilentlyContinue
     
     if ($CreateDBMailProfile) {
         if ($_Profile) {
@@ -1365,7 +1377,7 @@ function Set-DBMail {
             $SQL.JobServer.Alter()
         } -ErrorAction Stop
 
-        Write-Verbose ('{0}: Set Job Server Default Mail Profile to "{1}"' -f $DBMailProfileName)
+        Write-Verbose ('{0}: Set Job Server Default Mail Profile to "{1}"' -f (get-date).tostring(),$DBMailProfileName)
     }
     #endregion
 }
@@ -1503,11 +1515,11 @@ function New-DBMailOperator {
             $Operator.EmailAddress = $OperatorEmailAddress
             $Operator.PagerDays = $OperatorPagerDays
             $Operator.WeekdayPagerStartTime = $OperatorWeekdayStartTime
-            $Operator.WeekdayPagerStopTime = $OperatorWeekdayStopTime
+            $Operator.WeekdayPagerEndTime = $OperatorWeekdayStopTime
             $Operator.SaturdayPagerStartTime = $OperatorSaturdayStartTime
-            $Operator.SaturdayPagerStopTime = $OperatorSaturdayStopTime
+            $Operator.SaturdayPagerEndTime = $OperatorSaturdayStopTime
             $Operator.SundayPagerStartTime = $OperatorSundayStartTime
-            $Operator.SundayPagerStopTime = $OperatorSundayStopTime
+            $Operator.SundayPagerEndTime = $OperatorSundayStopTime
             $Operator.Create()
 
         } -ArgumentList $OperatorName,$OperatorEmailAddress,$OperatorEnabled,$OperatorPagerDays,$OperatorWeekdayStartTime,$OperatorWeekdayStopTime,$OperatorSaturdayStartTime,$OperatorSaturdayStopTime,$OperatorSundayStartTime,$OperatorSundayStopTime -ErrorAction Stop
@@ -1591,7 +1603,7 @@ function Set-DBConfig {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1601,7 +1613,7 @@ function Set-DBConfig {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1609,7 +1621,7 @@ function Set-DBConfig {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -1618,7 +1630,7 @@ function Set-DBConfig {
 
     #region Check if DB(s) exist
     foreach ($db in $DBNames) {
-        if (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet) {
+        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet -Verbose:$false)) {
             Write-Error ('Selected DB Name "{0}" does not exist on SQL Server' -f $db) -ErrorAction Stop
         }
 
@@ -1629,7 +1641,7 @@ function Set-DBConfig {
     #region Set DB Recovery Model
     foreach ($db in $DBNames) {
         if ($db -ne 'tempdb') {
-            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$SQL.Databases["{0}"].RecoveryModel = "{1}"' -f $db,$DBRecoveryModel)) -ErrorAction Stop
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SQL.Databases["{0}"].RecoveryModel = "{1}"' -f $db,$DBRecoveryModel))) -ErrorAction Stop
         }
 
         Write-Verbose ('{0}: Set DB "{1}" to Recovery Model "{2}"' -f (get-date).tostring(),$db,$DBRecoveryModel)
@@ -1646,12 +1658,24 @@ function Set-DBConfig {
                 $DBFileGrowthType
             )
 
-            foreach ($logfile in $SQL.Databases[$db].LogFiles) {
-                $logfile.Growth = $DBFileGrowth
-                $logfile.GrowthType = $DBFileGrowthType
-                $logfile.Size = $DBFileSize
-                $logfile.Alter()
-                $logfile.Refresh()
+            foreach ($logfile in $SQL.Databases["$db"].LogFiles) {
+                $_change = $false
+                if ($logfile.Growth -ne $DBFileGrowth) {
+                    $logfile.Growth = $DBFileGrowth
+                    $_change = $true
+                } 
+                if ($logfile.GrowthType -ne $DBFileGrowth) {
+                    $logfile.GrowthType = $DBFileGrowthType
+                    $_change = $true
+                }
+                if ($logfile.Size -ne $DBFileSize) {
+                    $logfile.Size = $DBFileSize
+                    $_change = $true
+                }
+                if ($_change) {
+                    $logfile.Alter()
+                    $logfile.Refresh()
+                }
             }
         } -ArgumentList $db,$DBFileGrowth,$DBFileSize,$DBFileGrowthType -ErrorAction Stop
 
@@ -1663,13 +1687,25 @@ function Set-DBConfig {
                 $DBFileGrowthType
             )
 
-            foreach ($filegroup in $SQL.Databases[$db].FileGroups) {
+            foreach ($filegroup in $SQL.Databases["$db"].FileGroups) {
                 foreach ($file in $filegroup.Files) {
-                    $file.growth = $DBFileGrowth
-                    $file.growthtype = $DBFileGrowthType
-                    $file.size = $DBFileSize
-                    $file.alter()
-                    $file.refresh()
+                    $_Change = $false
+                    if ($file.Growth -ne $DBFileGrowth) {
+                        $file.growth = $DBFileGrowth
+                        $_Change = $true
+                    }
+                    if ($file.growthtype -ne $DBFileGrowthType) {
+                        $file.growthtype = $DBFileGrowthType
+                        $_change =$true
+                    }
+                    if ($file.size -ne $DBFileSize) {
+                        $file.size = $DBFileSize
+                        $_Change = $true
+                    }
+                    if ($_Change) {
+                        $file.alter()
+                        $file.refresh()
+                    }
                 }
             }
         } -ArgumentList $db,$DBFileGrowth,$DBFileSize,$DBFileGrowthType -ErrorAction Stop
@@ -1820,7 +1856,7 @@ function Set-SSLforSQLServer {
     #region Check PS Session to Server as service account and create
     $_svcAccountSession = Test-PSRemoting -ServerName $ServerName -ServerCreds $svcAccountCreds -ErrorAction SilentlyContinue
     
-    if ((-Not $_svcAccountSession) -or ($_svcAccountSession.State -ne 'Opened')) {
+    if (-Not $_svcAccountSession -or $_svcAccountSession.State -ne 'Opened') {
         Write-Error ('Service Account Session Validation Failed') -ErrorAction Stop
     }
 
@@ -1928,7 +1964,7 @@ function Set-SQLMemConfig {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2516,6 +2552,14 @@ function Enable-FSRMforSQL {
     Write-Verbose ('{0}: VALIDATED - Session to Server Validated' -f (get-date).tostring())
     #endregion
 
+    #region Check for PS Module
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+        Write-Error ('Missing PS Module on Server') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - SQLServer Module ready for use on Server' -f (get-date).tostring())
+    #endregion
+
     #region Test SQL Connection
     if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
@@ -2611,16 +2655,16 @@ function Enable-FSRMforSQL {
     $_FileGroups = Invoke-Command -Session $_Session -ScriptBlock {Get-FSRMFileGroup -ErrorAction SilentlyContinue}
 
     if ('SQL Backup Files' -notin $_FileGroups.Name) {
-        $_BackupsPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Backup Files' -IncludePattern '*.*' -ExcludePattern '$($backupsPattern -join ',')'")) -ErrorAction SilentlyContinue
+        $_BackupsPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Backup Files' -IncludePattern '*.*' -ExcludePattern ('$($backupsPattern -join "','")')")) -ErrorAction SilentlyContinue
 
         if (-Not $_BackupsPatternResult) {
             Write-Error ('Error Occurred createing "SQL Backup Files" with exlusion Pattern "{0}"' -f ($BackupsPattern -join ',')) -ErrorAction Stop
         }
 
-        Write-Verbose ('{0}: Created File Group "SQL Backup Files" with pattern "{1}"' -f (get-date).tostring(),($backupPattern -join ','))
+        Write-Verbose ('{0}: Created File Group "SQL Backup Files" with pattern "{1}"' -f (get-date).tostring(),($backupsPattern -join ','))
     }
     if ('SQL Log Files' -notin $_FileGroups.Name) {
-        $_LogsPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Log Files' -IncludePattern '*.*' -ExcludePattern '$($LogsPattern -join ',')'")) -ErrorAction Stop
+        $_LogsPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Log Files' -IncludePattern '*.*' -ExcludePattern ('$($LogsPattern -join "','")')")) -ErrorAction Stop
         
         if (-Not $_LogsPatternResult) {
             Write-Error ('Error Occured Creating "SQL Log Files" with exclusion Pattern "{0}"' -f ($LogsPattern -join ',')) -ErrorAction Stop
@@ -2629,7 +2673,7 @@ function Enable-FSRMforSQL {
         Write-Verbose ('{0}: Created File Group "SQL Log Files" with pattern "{1}"' -f (get-date).tostring(),($LogsPattern -join ','))
     }
     if ('SQL Data Files' -notin $_FileGroups.Name) {
-        $_DataPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Data Files' -IncludePattern '*.*' -ExcludePattern '$($DataPattern -join ',')'")) -ErrorAction Stop
+        $_DataPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL Data Files' -IncludePattern '*.*' -ExcludePattern ('$($DataPattern -join "','")')")) -ErrorAction Stop
 
         if (-Not $_DataPatternResult) {
             Write-Error ('Error Occured Creating "SQL Data Files" with exclusion Pattern "{0}"' -f ($DataPattern -join ',')) -ErrorAction Stop
@@ -2638,7 +2682,7 @@ function Enable-FSRMforSQL {
         Write-Verbose ('{0}: Created File Group "SQL Data Files" with pattern "{1}"' -f (get-date).tostring(),($DataPattern -join ','))
     }
     if ('SQL All Files' -notin $_FileGroups.Name) {
-        $_RootPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL All Files' -IncludePattern '*.*' -ExcludePattern '$($RootPattern -join ',')'")) -ErrorAction Stop
+        $_RootPatternResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-FSRMFileGroup -Name 'SQL All Files' -IncludePattern '*.*' -ExcludePattern ('$($RootPattern -join "','")')")) -ErrorAction Stop
 
         if (-Not $_RootPatternResult) {
             Write-Error ('Error Occured Creating "SQL All Files" with exclusion Pattern "{0}"' -f ($RootPattern -join ',')) -ErrorAction Stop
@@ -2855,7 +2899,7 @@ function Install-SQLServer {
     #region Check PS Session to Server and create
     $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
 
-    if (-Not $_Session -or $_Session.State -eq 'Opened') {
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
     }
 
@@ -2967,13 +3011,13 @@ function Install-SQLServer {
     #endregion
 
     #region Validate ISO Path and key exist
-    Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Mount-DiskImage -ImagePath $SQLISOPath")) -ErrorAction SilentlyContinue
+    Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Mount-DiskImage -ImagePath '$SQLISOPath'")) -ErrorAction SilentlyContinue
     Invoke-command -Session $_Session -ScriptBlock {Set-Location ((Get-Volume | where-object {$_.FileSystem -eq "CDFS"} | Select-Object -first 1).DriveLetter + ":")} -ErrorAction SilentlyContinue
     
     $SetupFile = Invoke-Command -Session $_session -ScriptBlock {(Get-Item .\Setup.exe).VersionInfo} -ErrorAction SilentlyContinue
 
     if (-Not ($SetupFile)) {
-        Write-Error ('Problem Mounting the ISO File and getting setup version info')
+        Write-Error ('Problem Mounting the ISO File and getting setup version info') -ErrorAction Stop
     } else {
         $_SQLServerVersion = $setupfile.FileVersion.Split('.')[0]
     }
@@ -2992,7 +3036,7 @@ function Install-SQLServer {
     #endregion
 
     #region Validate SysAdmin AD Group
-    $_SysAdminGroup = Get-ADGroup -Filter "name -eq '$SysAdminAgroup'" -ErrorAction SilentlyContinue
+    $_SysAdminGroup = Get-ADGroup -Filter "name -eq '$SysAdminGroup'" -ErrorAction SilentlyContinue
 
     if (-Not $_SysAdminGroup) {
         Write-Error ('SysAdmin Group Not Found') -ErrorAction Stop
@@ -3023,7 +3067,7 @@ function Install-SQLServer {
 
     #region Configure File Share Access
     if ($ConfigureFileShare) {
-        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-SMBShare -Name '$FileShareName' -Path '$InstallSQLDataDir' -ChangeAccess '$FileShareGroup' -FullAccess 'Domain Admins' -FolderEnumerationMode AccessBased")) -ErrorAction Stop
+        Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("New-SMBShare -Name '$FileShareName' -Path (Get-Item '$InstallSQLDataDir').Name -ChangeAccess '$FileShareGroup' -FullAccess 'Domain Admins' -FolderEnumerationMode AccessBased")) -ErrorAction Stop
         
         $_folders = ($_SQLBackupDir.FullName,$_SQLUserDBDataDir.FullName,$_SQLUserDBLogsDir.FullName,$_SQLTempDBDataDir.FullName,$_SQLTempDBLogsDir.FullName,$_InstallSQLDataDir.FullName)
 
@@ -3038,7 +3082,7 @@ function Install-SQLServer {
             Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$ACL = ' + "Get-ACL $_folder")) -ErrorAction SilentlyContinue
             Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$Acl.RemoveAccessRule(($Acl.Access | Where-Object {$_.IdentityReference -eq "Creator Owner"}))')) -ErrorAction SilentlyContinue
             Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$acl.AddAccessRule($AccessRule)')) -ErrorAction SilentlyContinue
-            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$Acl | Set-ACL $folder | Out-Null')) -ErrorAction Stop
+            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$Acl | Set-ACL '+$_folder+' | Out-Null')) -ErrorAction Stop
         }
     }
     #endregion
@@ -3050,7 +3094,7 @@ function Install-SQLServer {
     $Script += ('#Set-Location ((Get-Volume | ?{$_.FileSystem -eq "CDFS"} | select -first 1).DriveLetter + ":")') + [environment]::NewLine
     $Script += ('##Set environment variables for User/Group/Password' + [environment]::NewLine)
     $Script += ('$User = "{0}"' -f $_svcAccountCreds.UserName) + [environment]::NewLine
-    $Script += ('$Group = "{0}"' -f $SysAdminGroupName) + [environment]::NewLine
+    $Script += ('$Group = "{0}"' -f $_SysAdminGroup.Name) + [environment]::NewLine
     $Script += ('$PW = '+"'{0}'" -f $_svcAccountCreds.GetNetworkCredential().Password) + [environment]::NewLine
     $Script += ('$SPW = (Convertto-SecureString $PW -AsPlainText -Force)')
     $Script += ('##Execute Install of Software with options' + [environment]::NewLine)
@@ -3062,7 +3106,7 @@ function Install-SQLServer {
     $Script += (' /INSTANCEDIR="{0}" ' -f $SQLInstanceDir)
     $Script += (' /AGTSVCACCOUNT="{0}" ' -f $_svcAccountCreds.UserName)
     $Script += (' /SQLSVCACCOUNT="{0}" ' -f $_svcAccountCreds.Username)
-    $Script += (' /SQLSYSADMINACCOUNTS="{0}" ' -f $SysAdminGroupName)
+    $Script += (' /SQLSYSADMINACCOUNTS="{0}" ' -f $_SysAdminGroup.Name)
     $Script += (' /INSTALLSQLDATADIR="{0}" ' -f $InstallSQLDataDir)
     $SCript += (' /SQLBACKUPDIR="{0}" '-f $_SQLBackupDir.FullName) 
     $Script += (' /SQLUSERDBDIR="{0}" ' -f $_SQLUserDBDataDir.FullName)
@@ -3076,8 +3120,8 @@ function Install-SQLServer {
     if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBLOGFILEGROWTH={0}' -f $SQLTempDBLogFileGrowth)}
     if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLSVCINSTANTFILEINIT={0}' -f $SQLTempDBLogFileGrowth)}
     if ($_SQLServerVersion -ge '2017') {
-        $Script += (' /SQLSVCPASSWORD=$SPW ' -f $_svcAccountCreds.GetNetworkCredential().password) 
-        $Script += (' /AGTSVCPASSWORD=$SPW ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine    
+        $Script += (' /SQLSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) 
+        $Script += (' /AGTSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine
     } else {
         $Script += (' /SQLSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) 
         $Script += (' /AGTSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine
