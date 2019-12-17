@@ -1,12 +1,10 @@
-##################################################################
-# Backup Databases
-##################################################################
-
+$jobStep.Command = {
 # Set Variables
 $_Instance = "$(ESCAPE_DQUOTE(SRVR))"
 $_DaysBack = -2
 $_Extension = 'bak'
 $_BackupAction = 'Database'
+$_BackupRoot = ('\\{0}\Backup\SQLTemp\' -f $env:USERDNSDOMAIN)
 
 # fix Instance if default
 if ($_Instance -notlike '*\*') {
@@ -33,6 +31,7 @@ if ($_SQL.isClustered) {
 
 # Filter DB's Based on Action Type
 if ($_BackupAction -eq 'log') {
+    ('Backup Type is Log Backup...removing DBs with Recovery Model of Simple')
     $_dbs = $_dbs | Where-Object {$_.RecoveryModel -ne 'Simple'}
 }
 
@@ -42,9 +41,11 @@ if ($_dbs) {
 
     # configure backup location
     if ($_SQL.BackupDirectory) {
+        ('Using SQL Server Default Backup Directory')
         $_backupDir = $_SQL.BackupDirectory
     } else {
-        $_backupDir = ('\\corp.dupagemd.com\backup\SQLTemp\{0}\' -f $env:COMPUTERNAME)
+        ('Using Network Share Root "{0}" - No Default Set' -f $_BackupRoot)
+        $_backupDir = ('{0}\{1}\' -f $_backupRoot,$env:COMPUTERNAME)
     }
 
     # Set backup location for current directory
@@ -57,7 +58,7 @@ if ($_dbs) {
             # Backup Current DB
             try {
                 $_filepath = ('{0}\{1}_{2}.{3}' -f $_backupDir, $_db.name, (get-date).ToString('MM-dd-yyyy_hh-mm-ss'),$_Extension)
-                
+                $_Start = (get-date)
                 ('Backing up DB "{0}" to Path "{1}"...' -f $_db.name,$_filepath)
 
                 # load libraries to use SQL SMO and Backup (regardless of PS version loaded)
@@ -67,6 +68,9 @@ if ($_dbs) {
                 $_backup.Devices.AddDevice($_filepath,'File')
                 $_backup.Action = $_BackupAction
                 $_backup.SQLBackup($_SQL)
+                $_Stop = (get-date)
+
+                ('Backup of DB "{0}" took "{1}" seconds to backup' -f $_db.name,($_stop - $_start).TotalSeconds)
             } catch {
                 ('An Error occured backing up DB "{0}": {1}' -f $_db.name,$error[0].Message)
             }
@@ -91,4 +95,5 @@ if ($_dbs) {
     }
 } else {
     ('No Databases for Backup')
+}
 }
