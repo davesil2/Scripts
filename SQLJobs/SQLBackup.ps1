@@ -1,4 +1,3 @@
-$jobStep.Command = {
 # Set Variables
 $_Instance = "$(ESCAPE_DQUOTE(SRVR))"
 $_DaysBack = -2
@@ -95,5 +94,4 @@ if ($_dbs) {
     }
 } else {
     ('No Databases for Backup')
-}
 }
