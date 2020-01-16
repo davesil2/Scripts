@@ -306,45 +306,91 @@ function Test-SQLDBExists {
 
 #region Generic Supporting functions
 function Test-Credential {
-    [CmdletBinding()]
+    [CmdletBinding(
+        DefaultParameterSetName = 'None'
+    )]
     Param(
+        # Credentials to Use
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='Credentials'
+        )]
+        [System.Management.Automation.PSCredential]
+        $Credentials,
+
         # Username to Test
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='UserPassword'
+        )]
         [string]
         $UserName,
 
         # Password in SecureString Format
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='UserPassword'
+        )]
         [securestring]
         $Password,
 
         # System to Validate Username/Password
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateSet('Domain','Machine')]
         [String]
         $ContextType = 'Domain',
 
         # Domain Name
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [String]
         $Domain = (Get-ADDomain).NetBIOSName
     )
 
-    if ($Username -notlike '*@*' -and $Username -notlike '*\*' -and $Domain) {
-        $_UserName = ('{0}\{1}' -f $Domain,$Username)
-    } else {
-        $_UserName = $UserName
+    if ($PSCmdlet.ParameterSetName -eq 'Credentials') {
+        $_UserName = $Credentials.UserName.Split('\') | Select-Object -Last 1
+        
+        $_Domain = $Credentials.GetNetworkCredential().Domain
+
+        if (-Not $_Domain -and $Domain -and $ContextType -eq 'Domain') {
+            $_Domain = $Domain
+        }
+
+        # Get Cleartext password
+        $_Password = $Credentials.GetNetworkCredential().Password
     }
-    Write-Verbose ('{0}: Using UserName "{1}"' -f (get-date).ToString(),$_UserName)
-    
-    #region Convert Password to cleartext for use
-    $_Password = [Runtime.interopservices.marshal]::Ptrtostringauto([runtime.interopservices.marshal]::SecureStringToBSTR($Password))
-    #endregion
+
+    if ($PSCmdlet.ParameterSetName -eq 'UserPassword') {
+        $_UserName = $UserName.Split('\') | Select-Object -Last 1
+
+        $_Domain = $UserName.Split('\') | Select-Object -First 1
+
+        if ($_Domain -eq $_UserName) {
+            $_Domain = $Null
+
+            if ($Domain -and $ContextType -eq 'Domain') {
+                $_Domain = $domain
+            }
+        }
+
+        # Get Cleartext password
+        $_Password = [Runtime.interopservices.marshal]::Ptrtostringauto([runtime.interopservices.marshal]::SecureStringToBSTR($Password))
+    }
+
+    Write-Verbose ('{0}: Using UserName "{1}" - Domain "{2}"' -f (get-date).ToString(),$_UserName,$_Domain)
 
     #region Test credentials
     Add-Type -AssemblyName System.DirectoryServices.AccountManagement | Out-Null
-    $DS = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($ContextType)
-    if (-Not $DS.ValidateCredentials($_Username, $_Password)) {
+    $_DS = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($ContextType)
+    if (-Not $_DS.ValidateCredentials($_Username, $_Password)) {
         Write-Error ('Error validating Username "{0}" with provided password' -f $Username) -ErrorAction Continue
         return $null
     }
@@ -352,7 +398,12 @@ function Test-Credential {
     Write-Verbose ('{0}: VALIDATED - Credentials Tested Successfully' -f (get-date).tostring())
     #endregion
 
-    Return (New-object pscredential $_UserName,$Password)
+    if ($_Domain) {
+        $_UserName = ('{0}\{1}' -f $_Domain,$_UserName)
+        Write-Verbose ('{0}: Adding Domain Name to Credentials' -f (Get-Date).tostring())
+    }
+
+    Return (New-object pscredential $_UserName,(ConvertTo-SecureString $_Password -Force -AsPlainText))
 
     <#
     .SYNOPSIS
@@ -2038,7 +2089,17 @@ function Set-SQLBackupConfig {
         # Create folders in Backup Path if missing
         [Parameter(Mandatory=$false)]
         [boolean]
-        $CreateFolderifMissing = $true
+        $CreateFolderifMissing = $true,
+        
+        # Add rights to backup path with Service Account
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $AddRights,
+
+        # Service Account Name to add to folder rights
+        [Parameter(Mandatory = $false)]
+        [string]
+        $svcAccountName = ('s-{0}' -f $ServerName)
     )
 
     #region Check PS Session to Server and create
@@ -2096,6 +2157,25 @@ function Set-SQLBackupConfig {
     } -ArgumentList $_Path.FullName
 
     Write-Verbose ('{0}: Updated Default Backup Path to "{1}"' -f (get-date).tostring(),$_path.FullName)
+    
+    if ($AddRights) {
+        if (-Not $svcAccountName) {
+            Write-Error ('Service Account Name not provided to add rights to folder.') -ErrorAction Stop
+        }
+
+        try {
+            $ACL = Get-ACL $DefaultBackupPath
+            if (-Not ($ACL.Access | Where-Object {?_.IdentityReference -like "*$svcAccountName*"})) {
+                $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $svcAccountName,'Modify','ContainerInherit,ObjectInherit','None','Allow'
+                $acl.AddAccessRule($accessRule)
+                $ACL | Set-Acl $DefaultBackupPath
+            }
+        } catch {
+            Write-Error ('An error occured when addeding service account "{0}" to path "{1}". Error: {2}' -f $svcAccountName,$DefaultBackupPath,$Error[0])
+        }
+
+        Write-Verbose ('{0}: Set User "{1}" to have modify permissions at path "{2}"' -f (get-date).tostring(),$svcAccountName,$DefaultBackupPath)
+    }
     #endregion
 }
 
@@ -2755,6 +2835,219 @@ function Enable-FSRMforSQL {
     Write-Verbose ('{0}: Created File Screen for "{1}"' -f (get-date).tostring(),$_SQLDBPath)
     #endregion
 
+}
+
+function Set-SQLShare {
+
+}
+
+function Set-SQLMaintenanceJobs {
+    [CmdletBinding()]
+    Param(
+        # Server to Connect and configure SQL History
+        [Parameter(Mandatory=$true)]
+        [string]
+        $ServerName,
+        
+        # Optional Credentials for connecting to Server
+        [Parameter(Mandatory=$false)]
+        [PSCredential]
+        $ServerCreds,
+
+        # Instance Name of SQL to configure
+        [parameter(Mandatory=$false)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $SQLInstance = 'Default',
+
+        # Which Jobs will be created/updated
+        [Parameter(Mandatory=$false)]
+        [ValueSet('FileSize','FullBackup','LogBackup','Indexes','DBCheck','Schedule')]
+        [string[]]
+        $Jobs = ('FileSizes','FullBackup','LogBackup','Indexes','DBCheck','Schedule'),
+
+        # Name of Operator to use for job failures
+        [Parameter(Mandatory=$false)]
+        [string]
+        $OperatorName,
+
+        [ValueSet('Daily','Weekly')]
+        [string]
+        $jobFrequency,
+
+        [timespan]
+        $jobStartTime = '23:00:00',
+
+        [switch]
+        $UpdateExisting,
+
+        [switch]
+        $IgnoreExisting
+    )
+
+    #region Job Creation Hash Table
+    $_table = @()
+    $_table += [PSCustomObject]@{
+        ShortName = 'FileSizes';
+        FullName = 'SQL Maintenance - File Sizes';
+        CodeURL = '';
+    }
+    $_table += [PSCustomObject]@{
+        ShortName = 'FullBackup';
+        FullName = 'SQL Maintenance - Full Backup';
+        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLBackup.ps1';
+    }
+    $_table += [PSCustomObject]@{
+        ShortName = 'LogBackup';
+        FullName = 'SQL Maintenance - Log Backup';
+        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLLogBackup.ps1';
+    }
+    $_table += [PSCustomObject]@{
+        ShortName = 'Indexes';
+        FullName = 'SQL Maintenance - Indexes';
+        CodeURL = '';
+    }
+    $_table += [PSCustomObject]@{
+        ShortName = 'DBCheck';
+        FullName = 'SQL Maintenance - DB Check';
+        CodeURL = '';
+    }
+    $_table += [PSCustomObject]@{
+        ShortName = 'Schedule';
+        FullName = 'SQL Maintenance';
+        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/JobStartTemplate.ps1';
+    }
+    #endregion
+
+    #region Check PS Session to Server and create
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+
+    if (-Not $_Session -or $_Session.State -ne 'Opened') {
+        Write-Error ('Session Validation Failed') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Session to Server Validated' -f (get-date).tostring())
+    #endregion
+
+    #region Check for PS Module
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+        Write-Error ('Missing PS Module on Server') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - SQLServer Module ready for use on Server' -f (get-date).tostring())
+    #endregion
+
+    #region Test SQL Connection
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+        Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - SQL Connection Validated' -f (get-date).tostring())
+    #endregion
+
+    #region Check for existing jobs
+    $_ExistingJobs = Invoke-Command -Session $_Session -ScriptBlock {$SQL.JobServer.Jobs}
+    $_SelectedJobs = $_table | Where-Object {$_.ShortName -in $Jobs}
+
+    $_Overlapping = $_SelectedJobs | Where-Object {$_.fullname -in $_ExistingJobs.Name}
+
+    if (-Not $UpdateExisting -and -Not $IgnoreExisting -and $_Overlapping) {
+        Write-Error ('The Jobs "{0}" already exist on Server, Try UpdateExisting or IgnoreExisting' -f ($_Overlapping.FullName -join ','))
+    }
+
+    if ($IgnoreExisting) {
+        $_SelectedJobs = $_SelectedJobs | Where-Object {$_.ShortName -notin $_Overlapping.ShortName}
+        Write-Verbose ('{0}: Existing Jobs "{1}" will be ignored' -f (get-date).ToString(),($_SelectedJobs | Where-Object {$_.ShortName -in $_Overlapping.ShortName}).ShortName)
+    }
+
+    Write-Verbose ('{0}: Jobs "{1}" to be installed/updated on server' -f (get-date).ToString(),($Jobs -join ','))
+    #endregion
+
+    foreach ($_job in $_SelectedJobs) {
+        # Get Code for Job from URL
+        $_code = (Invoke-WebRequest -Uri $_Job.CodeUrl).Content.split([environment]::newline) -join ([char]13 + [char]10)
+        Write-Verbose ('{0}: Downloaded Code for Job "{1}" from "{2}"' -f (get-date).tostring(),$_job.FullName,$_job.CodURL)
+
+        if ($UpdateExisting -and $_Job.ShortName -in $_Overlapping.ShortName) {
+            if ($_Job.ShortName -ne 'Schedule') {
+                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep = $SQL.JobServer.Jobs["{0}"].JobSteps[0]' -f $_job.FullName))
+                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep.Command = {0}' -f $_code))
+                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep.Alter()'))
+            } else {
+                
+            }
+        } else {
+            Invoke-Command -Session $_Session -ScriptBlock {
+                Param($_code,$_Job,$_Operator,$jobFrequency,$jobStartTime)
+    
+                $job = New-Object Microsoft.SqlServer.Management.Smo.Agent.Job
+                $job.Parent = $SQL.JobServer
+                $job.Name = $_Job.FullName
+                $job.Create()
+    
+                $job.EmailLevel = 'OnFailure'
+                if ($SQL.Jobserver.Operators["$_Operator"]) {
+                    $job.OperatorToEmail = $_Operator
+                }
+                $job.IsEnabled = $true
+                $job.OwnerLoginName = 'sa'
+                $job.StartStepID = '1'
+                $targetServer = $SQL.NetName
+                if ($sql.InstanceName){
+                    $targetServer += "\"+$SQL.InstanceName
+                }
+                $job.ApplyToTargetServer($targetServer)
+                $job.Alter()
+                
+                if ($_Job.ShortName -eq 'Schedule') {
+                    $_Jobs = ('SQL Maintenance - DB Check','SQL Maintenance - Fix File Sizes','SQL Maintenance - Indexes','SQL Maintenance - Full Backup','SQL Maintenance - Log Backup')
+                } else {
+                    $_Jobs = $_Job.FullName
+                }
+
+                foreach ($_j in $_Jobs) {
+                    if ($SQL.JobServer.Jobs["$_j"]) {
+                        $jobStep = New-Object Microsoft.SqlServer.Management.Smo.Agent.JobStep
+                        $jobStep.Parent = $job
+                        $jobStep.Name = ("Exec" + $_J.Split('-')[1].trim())
+                        $jobStep.DatabaseName = 'master'
+                        $jobstep.OnFailAction = 'QuitWithFailure'
+                        if ($_Jobs.count -gt 1) {
+                            $jobStep.OnSuccessAction = 'Gotonextstep'
+                            $_code.Replace('{0}',"'$_j'")
+                        } else {
+                            $jobStep.OnSuccessAction = 'QuitWithSuccess'
+                        }
+                        $jobstep.SubSystem = 'PowerShell'
+                        $jobstep.JobStepFlags = 'AppendAllCmdExecOutputToJobHistory'
+                        $jobStep.Command = $_code
+                        $jobstep.Create()
+                    } else {
+                        Write-Warning ('Job "{0}" was not found to be added as job step' -f $_j)
+                    }
+                }
+
+                if ($_Jobs.Count -gt 1) {
+                    # Create Schedule to execute job
+                    if (-Not ($SQL.JobServer.SharedSchedules["$jobfrequency - $JobStartTime"])) {
+                        $jsch = new-object Microsoft.SqlServer.Management.Smo.Agent.JobSchedule
+                        $jsch.Parent = $job
+                        $jsch.Name = "$jobFrequency - $JobStarttime"
+                        $jsch.Create()
+    
+                        $jsch.FrequencyInterval = 1
+                        $jsch.ActiveStartTimeOfDay = $jobStartTime
+                        $jsch.FrequencySubDayTypes = 'Once'
+                        $jsch.FrequencyTypes = $jobFrequency
+                        $jsch.IsEnabled = $true
+                        $jsch.alter()
+                    } else {
+                        $Job.AddSharedSchedule($sql.JobServer.SharedSchedules["$JobFrequency - $JobStartTime"].id)
+                    }
+                }
+            } -ArgumentList $_code, $_Job, $OperatorName, $jobFrequency, $jobStartTime.toString()
+        }
+    }
 }
 #endregion
 

@@ -128,47 +128,75 @@ function Test-Ping {
     #>
 }
 
-Function Test-Port {
+function Test-Port {
     [CmdletBinding()]
     Param(
         # Name or IP of Server to test
         [Parameter(Mandatory=$true)]
+        [Alias('ServerName','ComputerName','Host','HostName')]
         [String]
         $Server,
 
         # Port Number to Test Server
         [Parameter(Mandatory=$true)]
+        [ValidateRange(1,65535)]
         [Int]
         $Port,
 
         # Timeout Value if not connecting
         [Parameter(Mandatory=$False)]
         [Int]
-        $Timeout = 3000
-    )
-    
-    $_IP = [net.dns]::Resolve($server).addresslist[0].ipaddresstostring      
+        $Timeout = 3000,
 
-    if ($_IP) {    
-        [void] ($socket = New-Object net.sockets.tcpclient)
-        $Connection = $socket.BeginConnect($server,$Port,$null,$null)
-        [void] ($Connection.AsyncWaitHandle.WaitOne($TimeOut,$False))
-        
-        $hash = @{Server=$Server
-                  IPAddress = $_IP
-                  Port=$Port
-                  Successful=($socket.connected)}
-                  
-        $socket.Close()
-        
-    } else {
-        $hash = @{Server=$server
-                  IPAddress = $null
-                  Port=$Port
-                  Successful=$null}
-    }
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $Quiet
+    )
+
+    # Setup table for Return values with server name
+    $_table = [PSCustomObject]@{}
     
-    return (new-object PSObject -Property $hash) | Select-Object Server,IPAddress,Port,Successful
+    Write-Verbose ('{0}: Parse - Value for Server "{0}"' -f (get-date).tostring(),$Server)
+$_IP = $null
+    if ([ipaddress]::TryParse($server,[ref]$_IP)) {
+        # Resolve IP to Server Name
+        try {
+            $Server = [net.dns]::GetHostEntry($_IP).HostName
+            Write-Verbose ('{0}: HostEntry - Reverse Lookup value is "{1}"' -f (get-date).tostring(),$Server)
+        } catch {}
+    } else {
+        # Resolve Server Name to IP Address
+        try {
+            $_IP = [net.dns]::Resolve($server).addresslist[0].IPAddressToString
+            Write-Verbose ('{0}: Resolve - IP Address is "{1}"' -f (get-date).tostring(),$_IP)
+        } catch {}
+    }
+
+    # Add Server Name, IP and Port to Table
+    $_table | Add-Member -MemberType NoteProperty -Name Server -Value $Server
+    $_table | Add-Member -MemberType NoteProperty -Name IPAddress -Value $_IP
+    $_table | Add-Member -MemberType NoteProperty -Name Port -Value $Port
+
+    # Test Port against Server
+    if ($_IP) {
+        Write-Verbose ('{0}: Socket - Connection to "{1}"' -f (get-date).tostring(),$Server)
+        $socket = New-Object net.sockets.tcpclient
+        $Connection = $socket.BeginConnect($server,$Port,$null,$null)
+        $Connection.AsyncWaitHandle.WaitOne($Timeout,$false) | Out-Null
+        
+        Write-Verbose ('{0}: Socket - Tested "{1}" on Port "{2}"' -f (get-date).tostring(),$server,$port)
+        $_table | Add-Member -MemberType NoteProperty -Name Successful -Value $socket.Connected
+        
+        $socket.Close()
+    } else {
+        $_table | Add-Member -MemberType NoteProperty -Name Successful -Value $null
+    }
+
+    if ($Quiet) {
+        return $_table.successful
+    } else {
+        return $_table | Select-Object Server,IPAddress,Port,Successful
+    }
 
     <#
     .SYNOPSIS
@@ -190,8 +218,8 @@ Function Test-Port {
     #>
 }
 
-Function Get-ActiveTCPListeners{
-    
+Function Get-ActiveTCPListeners {
+
     return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPListeners() | Select-Object Address,Port
 
     <#
@@ -210,7 +238,7 @@ Function Get-ActiveTCPListeners{
     #>
 }
 
-Function Get-ActiveTCPConnections{
+Function Get-ActiveTCPConnections {
 
     return [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTCPConnections() | Select-Object LocalEndPoint,RemoteEndPoint,State
     
@@ -1763,55 +1791,6 @@ function New-CertificateSigning {
     #>
 }
 
-function Test-SQLDatabase 
-{
-    param( 
-    [Parameter(Position=0, Mandatory=$True, ValueFromPipeline=$True)] [string] $Server,
-    [Parameter(Position=1, Mandatory=$True)] [string] $Database,
-    [Parameter(Position=2, Mandatory=$True, ParameterSetName="SQLAuth")] [string] $Username,
-    [Parameter(Position=3, Mandatory=$True, ParameterSetName="SQLAuth")] [string] $Password,
-    [Parameter(Position=2, Mandatory=$True, ParameterSetName="WindowsAuth")] [switch] $UseWindowsAuthentication
-    )
-
-    # connect to the database, then immediatly close the connection. If an exception occurrs it indicates the conneciton was not successful. 
-    process { 
-        $dbConnection = New-Object System.Data.SqlClient.SqlConnection
-        if (!$UseWindowsAuthentication) {
-            $dbConnection.ConnectionString = "Data Source=$Server; uid=$Username; pwd=$Password; Database=$Database;Integrated Security=False"
-            $authentication = "SQL ($Username)"
-        }
-        else {
-            $dbConnection.ConnectionString = "Data Source=$Server; Database=$Database;Integrated Security=True;"
-            $authentication = "Windows ($env:USERNAME)"
-        }
-        try {
-            $connectionTime = measure-command {$dbConnection.Open()}
-            $Result = @{
-                Connection = "Successful"
-                ElapsedTime = $connectionTime.TotalSeconds
-                Server = $Server
-                Database = $Database
-                User = $authentication}
-        }
-        # exceptions will be raised if the database connection failed.
-        catch {
-                $Result = @{
-                Connection = "Failed"
-                ElapsedTime = $connectionTime.TotalSeconds
-                Server = $Server
-                Database = $Database
-                User = $authentication}
-        }
-        Finally{
-            # close the database connection
-            $dbConnection.Close()
-            #return the results as an object
-            $outputObject = New-Object -Property $Result -TypeName psobject
-            write-output $outputObject 
-        }
-    }
-}
-
 Function Get-ExpiredCerts
 {
     Param(
@@ -2194,5 +2173,589 @@ function Set-ADPhoto {
         * The function can optionally resize the photo image provided from file
 
         * The function can optionally overwrite the existing image if desired
+    #>
+}
+
+function Test-PSRemoting {
+    [CmdletBinding(
+        DefaultParameterSetName='None'
+    )]
+    Param(
+        # Name of Computer to connect to 
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','Server','Host','HostName')]
+        [string]
+        $ServerName,
+
+        # Password to use when connecting
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='UserPassword',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('pw')]
+        [securestring]
+        $Password,
+
+        # Username to use When connecting
+        [Parameter(
+            Mandatory=$false,
+            ParameterSetName='UserPassword',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('User','Account','AccountName','UserAccount')]
+        [String]
+        $UserName,
+
+        # Credentials to use when connecting
+        [Parameter(
+            Mandatory=$false,
+            ParameterSetName='PSCreds',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('creds','servercreds','pscreds')]
+        [PSCredential]
+        $Credentials,
+
+        # Define the Type of Authentication to use
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateSet('Kerberos','Credssp')]
+        $AuthentiationType = 'Kerberos',
+
+        # Return True or False based on success/failure
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [switch]
+        $Quiet
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'UserPassword') {
+        $_Creds = New-Object pscredential $UserName,$Password
+        $_Session = New-PSSession -ComputerName $ServerName -Credential $_Creds -Authentication $AuthentiationType -ErrorAction SilentlyContinue
+    }
+    if ($PSCmdlet.ParameterSetName -eq 'PSCreds') {
+        $_Session = New-PSSession -ComputerName $ServerName -Credential $Credentials -Authentication $AuthentiationType -ErrorAction SilentlyContinue
+    }
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $_Session = New-PSSession -ComputerName $ServerName -Authentication $AuthentiationType -ErrorAction SilentlyContinue
+    }
+
+    if ($_Session) {
+        If ($Quiet) {
+            Remove-PSSession $_Session -Confirm:$false
+            return $true
+        }
+        return $_Session
+    } else {
+        if ($Quiet) {
+            return $false
+        }
+        return $null
+    }
+
+    <#
+    .SYNOPSIS
+
+    Test PS Remoting Connection to server and return session object
+
+    .DESCRIPTION
+
+    Verify the Server Access with PS Remoting.  Quiet returns true or false, otherwise the session is returned or nothing.
+
+    .EXAMPLE
+
+    $Creds = Get-Credential domain\user
+
+    Test-PSRemoting -ServerName 'Server01' -ServerCreds $Creds
+
+    .EXAMPLE
+
+    Test-PSRemoting -ServerName 'Server01'
+    
+    .EXAMPLE
+
+    Test-PSRemoting -ServerName 'Server01' -Username 'User01' -Password (ConvertTo-SecureString 'testpassword' -Force -AsPlainText)
+    #>
+}
+
+function Test-PSModuleInstalled {
+    [cmdletBinding()]
+    Param(
+        # PS Session to use (get from test-psremoting)
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName
+        )]
+        [System.Management.Automation.Runspaces.PSSession]
+        $Session,
+
+        # Name of PS Module to Check for
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [string]
+        $ModuleName,
+
+        # try to Install the module if not found (using Install-Module)
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [switch]
+        $Install
+    )
+
+    #region Check Session
+    if (-Not $Session -or $Session.state -ne 'Opened') {
+        Write-Error ('there is a problem with the Session provided') -ErrorAction Continue
+        return $false
+    }
+    #endregion
+
+    $_GetModuleScript = ([scriptblock]::Create("Get-Module -ListAvailable $ModuleName"))
+
+    if (-Not (Invoke-Command -Session $Session -ScriptBlock $_GetModuleScript -ErrorAction SilentlyContinue)) {
+        if ($Install) {
+            Invoke-Command -Session $Session -ScriptBlock {
+                Param($ModuleName)
+                Install-Module -Name $ModuleName -Force -SkipPublisherCheck -Confirm:$false
+            } -ArgumentList $ModuleName -ErrorAction SilentlyContinue
+
+            Write-Verbose ('{0}: Installing PS Module "{1}" Found on Server "{2}"' -f (get-date).tostring(),$ModuleName,$Session.ComputerName)
+
+            if (-Not (Invoke-Command -Session $Session -ScriptBlock $_GetModuleScript -ErrorAction SilentlyContinue)) {
+                Write-Warning ('{0}: Failed to Install PS Module "{1}" Found on Server "{2}"' -f (get-date).tostring(),$ModuleName,$Session.ComputerName)
+                return $false
+            }
+        }
+        Write-Warning ('{0}: PS Module "{1}" NOT Found on Server "{2}"' -f (get-date).tostring(),$ModuleName,$Session.ComputerName)
+        return $False
+    }
+
+    Write-Verbose ('{0}: PS Module "{1}" Found on Server "{2}"' -f (get-date).tostring(),$ModuleName,$Session.ComputerName)
+    return $true
+
+    <#
+    .SYNOPSIS
+
+    Check for PowerShell Module existing on Server Session
+
+    .DESCRIPTION
+
+    In order to be able to execute powershell functions, their modules are required.  This function will verify if the module exists on the remote server session and install if not there when specified.
+
+    .EXAMPLE
+
+    $_Session = Test-PSRemoting -ServerName 'Server01' -ServerCreds (Get-Credential)
+    Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer
+
+    #>
+}
+
+function Test-SQLDatabase {
+    [CmdletBinding(
+        DefaultParameterSetName='None'
+    )]
+    Param(
+        # Name of Server to connect for testing a specific DB
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='UserPassword',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Server','Host','HostName','Computer','ComputerName')]
+        [string]
+        $ServerName,
+
+        # SQL Instance Name 
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [string]
+        $InstanceName = 'Default',
+
+        # PowerShell Remoting Session to use to connect
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='PSSession',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('pssession')]
+        [System.Management.Automation.Runspaces.PSSession]
+        $Session,
+
+        # UserName to connect to SQL Server Instance
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='UserPassword',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('User','Account','AccountName','UserAccount')]
+        [String]
+        $UserName,
+
+        # Password to connect to SQL Server Instance
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='UserPassword',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('pw')]
+        [securestring]
+        $Password,
+
+        # Credentials for connecting to SQL Server
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='ServerCreds',
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Creds','PSCreds')]
+        [System.Management.Automation.PSCredential]
+        $Credentials,
+
+        # Name of Database to check
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Database','DB')]
+        [string]
+        $DBName,
+
+        # Switch to Use PS Remoting when connecting to SQL Server
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Switch]
+        $UseRemoting,
+
+        # Use SQL Authentication
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Switch]
+        $SQLAuth,
+
+        # Return True/False for databases existance
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [switch]
+        $Quiet
+    )
+
+    Write-Verbose ('{0}: INFORMATION - Using ParameterSet "{1}"' -f (get-date).ToString(),$PSCmdlet.ParameterSetName)
+
+    #region Configure Authentication String
+    if ($SQLAuth) {
+        if ($Credentials) {
+            $_UserName = $Credentials.UserName
+            $_Password = $Credentials.GetNetworkCredential().Password
+        }
+        if ($UserName -and $Password) {
+            $_UserName = $UserName
+            $_Password = [Runtime.interopservices.marshal]::Ptrtostringauto([runtime.interopservices.marshal]::SecureStringToBSTR($Password))
+        }
+        $_ConnectionString = "Data Source=$ServerName; uid=$_Username; pwd=$_Password; Integrated Security=False"
+        Write-Verbose ('{0}: Using SQL Authentication for Databse' -f (get-date).tostring())
+    } else {
+        $_ConnectionString = "Data Source=$ServerName; Integrated Security=True;"
+        Write-Verbose ('{0}: Using Integrated Authentication' -f (get-date).tostring())
+    }
+    #endregion
+
+    if ($UseRemoting) {
+        if ($PSCmdlet.ParameterSetName -eq 'ServerCreds') {
+            $_Session = Test-PSRemoting -ServerName $ServerName -Credentials $Credentials -ErrorAction SilentlyContinue -Verbose:$false
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'UserPassword') {
+            $_Session = Test-PSRemoting -ServerName $ServerName -UserName $UserName -Password $Password -ErrorAction SilentlyContinue -Verbose:$false
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'PSSession') {
+            $_Session = $Session
+            $ServerName = $_Session.ComputerName
+            $UseRemoting = $true
+        }
+
+        if (-Not $_Session -and $_Session -ne 'Opened') {
+            Write-Error ('A Problem occured connected to server "{0}" with PS Remoting' -f $ServerName) -ErrorAction Stop
+        }
+
+        Write-Verbose ('{0}: VALIDATED - Session Connection to "{1}"' -f (get-date).tostring(),$ServerName)
+    } else {
+        if (-Not $SQLAuth -and ($Credentials -or $UserName)) {
+            if ($PSCmdlet.ParameterSetName -eq 'UserPassword') {
+                $_Identity = New-UserIdentityToken -UserName $UserName -Password $Password
+            }
+            if ($PSCmdlet.ParameterSetName -eq 'ServerCreds') {
+                $_Identity = New-UserIdentityToken -Credentials $Credentials
+            }
+
+            if (-Not $_Identity) {
+                Write-Error ('An Error Occured Impersonating User') -ErrorAction Stop
+            }
+
+            $_Context = $_Identity.Impersonate()
+
+            Write-Verbose ('{0}: Impersonating User "{1}"' -f (get-date).tostring(),$_Identity.Name)
+        }
+    }
+    
+    #region Validate SQL
+    $_Commands = @()
+    $_Commands += '[reflection.assembly]::LoadWithPartialName("Microsoft.SqlServer.Smo") | Out-Null'
+    $_Commands += 'try {$SQL = New-Object Microsoft.SqlServer.Management.Smo.Server} catch {import-module sqlserver; $SQL = New-Object Microsoft.SqlServer.Management.Smo.Server}'
+    $_Commands += ('$SQL.ConnectionContext.ConnectionString = "{0}"' -f $_ConnectionString)
+    $_Commands += '$SQL.Status'
+    
+    if ($UseRemoting) {
+        $_SQLStatus = (Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(($_commands | out-string))) -ErrorVariable SilentlyContinue).Value
+    } else {
+        $_SQLStatus = $_Commands | Invoke-Expression
+    }
+
+    if ($_SQLStatus -ne 'Online') {
+        Write-Error ('Connection to SQL Server Failed') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - SQL Server Instance "{1}" on Server "{2}"' -f (get-date).ToString(),$InstanceName,$ServerName)
+    #endregion
+
+    #region Get DB and return
+    if ($UseRemoting) {
+        $_DB = Invoke-Command -Session $_Session -ScriptBlock {$SQL.Databases} -ErrorAction SilentlyContinue | Where-Object {$_.Name -like "$dbname"}
+    } else {
+        $_DB = Invoke-Expression -Command '$SQL.Databases' | Where-Object {$_.Name -like "$dbname"}
+    }
+    
+    if ($_Context) {
+        $_Context.Undo()
+        Write-Verbose ('{0}: Reverting Impersonation' -f (get-date).ToString())
+    }
+
+    if ($Quiet) {
+        if ($_DB) {
+            return $true
+        } else {
+            return $false
+        }
+    }
+    return $_DB
+    #endregion
+
+    <#
+    .SYNOPSIS
+
+    .DESCRIPTION
+
+    .EXAMPLE
+    #>
+}
+
+function Test-Credential {
+    [CmdletBinding(
+        DefaultParameterSetName = 'None'
+    )]
+    Param(
+        # Credentials to Use
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='Credentials'
+        )]
+        [System.Management.Automation.PSCredential]
+        $Credentials,
+
+        # Username to Test
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='UserPassword'
+        )]
+        [string]
+        $UserName,
+
+        # Password in SecureString Format
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='UserPassword'
+        )]
+        [securestring]
+        $Password,
+
+        # System to Validate Username/Password
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateSet('Domain','Machine')]
+        [String]
+        $ContextType = 'Domain',
+
+        # Domain Name
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [String]
+        $Domain = (Get-ADDomain).NetBIOSName
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'Credentials') {
+        $_UserName = $Credentials.UserName.Split('\') | Select-Object -Last 1
+        
+        $_Domain = $Credentials.GetNetworkCredential().Domain
+
+        if (-Not $_Domain -and $Domain -and $ContextType -eq 'Domain') {
+            $_Domain = $Domain
+        }
+
+        # Get Cleartext password
+        $_Password = $Credentials.GetNetworkCredential().Password
+    }
+
+    if ($PSCmdlet.ParameterSetName -eq 'UserPassword') {
+        $_UserName = $UserName.Split('\') | Select-Object -Last 1
+
+        $_Domain = $UserName.Split('\') | Select-Object -First 1
+
+        if ($_Domain -eq $_UserName) {
+            $_Domain = $Null
+
+            if ($Domain -and $ContextType -eq 'Domain') {
+                $_Domain = $domain
+            }
+        }
+
+        # Get Cleartext password
+        $_Password = [Runtime.interopservices.marshal]::Ptrtostringauto([runtime.interopservices.marshal]::SecureStringToBSTR($Password))
+    }
+
+    Write-Verbose ('{0}: Using UserName "{1}" - Domain "{2}"' -f (get-date).ToString(),$_UserName,$_Domain)
+
+    #region Test credentials
+    Add-Type -AssemblyName System.DirectoryServices.AccountManagement | Out-Null
+    $_DS = New-Object System.DirectoryServices.AccountManagement.PrincipalContext($ContextType)
+    if (-Not $_DS.ValidateCredentials($_Username, $_Password)) {
+        Write-Error ('Error validating Username "{0}" with provided password' -f $Username) -ErrorAction Continue
+        return $null
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Credentials Tested Successfully' -f (get-date).tostring())
+    #endregion
+
+    if ($_Domain) {
+        $_UserName = ('{0}\{1}' -f $_Domain,$_UserName)
+        Write-Verbose ('{0}: Adding Domain Name to Credentials' -f (Get-Date).tostring())
+    }
+
+    Return (New-object pscredential $_UserName,(ConvertTo-SecureString $_Password -Force -AsPlainText))
+
+    <#
+    .SYNOPSIS
+
+    Testing Credentials against domain or local computer
+
+    .DESCRIPTION
+
+    This function will validate the Username and Password provided to make sure they work.
+
+    Return Result: PSCredentials Object
+
+    Username is converted to <domain>\<username> if no domain is specified for username
+
+    Username can be <username>@<domain UPN>, <domain>\<username> or <username>
+
+    .EXAMPLE
+
+    $pw = read-host -AsSecureString
+
+    Test-Credential -Username 'Testuser' -Password $pw
+
+    .EXAMPLE
+
+    Test-Credential -UserName 'TestUser' -Password (Convertto-SecureString 'testpassword' -AsPlainText -Force)
+
+    #>
+}
+
+Function Get-UserProfiles {
+    [CmdletBinding()]
+    Param(
+        # Server To Get Profile Information From
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','Computer','Host','HostName','cn')]
+        [String]
+        $ServerName = 'localhost',
+
+        # Credentials to connect to computer
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Creds','ServerCreds')]
+        [PSCredential]
+        $Credential,
+
+        # Include Special users (built in service accounts)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Switch]
+        $IncludeSpecial
+    )
+
+    $_Profiles = Get-WmiObject -ComputerName $ServerName -Credential $Credential -Class Win32_UserProfile -Filter "Special = False OR Special = $IncludeSpecial" -ErrorAction SilentlyContinue
+
+    $_profiles | Select-Object `
+        @{
+            Name='UserName';
+            Expression={(New-Object System.Security.Principal.SecurityIdentifier($_.SID)).Translate([System.Security.Principal.NTAccount]).value}
+        },
+        @{
+            Name='LastUseDate';
+            Expression={$_.ConvertToDateTime($_.LastUseTime)}
+        },
+        Special,
+        LocalPath,
+        SID,
+        Status,
+        PSComputerName
+
+    <#
+    .SYNOPSIS
+    
+    Retrieves the Current User Profiles on a Windows Computer
+
+    .DESCRIPTION
+
+    Connects to Computer using WMI.  If Credentials are specified, they will be used.
+
+    .EXAMPLE
+
+    [pscustomobject]@{ComputerName='Server01} | Get-UserProfiles
+
+    .EXAMPLE
+
+    Get-UseerProfiles -ServerName 'Server01'
     #>
 }
