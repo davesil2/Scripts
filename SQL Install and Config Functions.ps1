@@ -3411,7 +3411,7 @@ function Install-SQLServer {
     if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBFILEGROWTH={0}' -f $SQLTempDBFileGrowth)}
     if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBLOGFILESIZE={0}' -f $SQLTempDBLogFileSize)}
     if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLTEMPDBLOGFILEGROWTH={0}' -f $SQLTempDBLogFileGrowth)}
-    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLSVCINSTANTFILEINIT={0}' -f $SQLTempDBLogFileGrowth)}
+    if ($_SQLServerVersion -ge '2016') {$Script += (' /SQLSVCINSTANTFILEINIT={0}' -f $True)}
     if ($_SQLServerVersion -ge '2017') {
         $Script += (' /SQLSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) 
         $Script += (' /AGTSVCPASSWORD="{0}" ' -f $_svcAccountCreds.GetNetworkCredential().password) + [environment]::NewLine
