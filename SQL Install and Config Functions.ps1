@@ -248,7 +248,7 @@ function Test-SQLDBExists {
     #endregion
 
     #region Verify SQLServer PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('PS Module SQLServer Not Found') -ErrorAction Continue
         if ($Quiet) {
             return $false
@@ -258,7 +258,7 @@ function Test-SQLDBExists {
     #endregion
 
     #region Verify SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Quiet)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Quiet -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Unable to connect to SQL Server') -ErrorAction Continue
         if ($Quiet) {
             return $false
@@ -500,9 +500,9 @@ function Install-SSLCertificate {
     try {
         if ($ServerCreds) {
             New-PSDrive -Name $ServerName -PSProvider FileSystem -Root ('\\{0}\c$' -f $ServerName) -Credential $ServerCreds | Out-Null
-            Copy-Item -Path $PFXFilePath -Destination ('{0}:\Windows\Temp\{0}.pfx' -f $ServerName) | Out-Null
+            Copy-Item -Path $PFXFilePath -Destination ('{0}:\Windows\{0}.pfx' -f $ServerName) | Out-Null
         } else {
-            Copy-Item -Path $PFXFilePath -Destination ('\\{0}\c$\Windows\Temp\{0}.pfx' -f $ServerName) | Out-Null
+            Copy-Item -Path $PFXFilePath -Destination ('\\{0}\c$\Windows\{0}.pfx' -f $ServerName) | Out-Null
         }
 
         Write-Verbose ('{0}: File "{1}" copied to "C:\Windows\Temp\{2}.pfx' -f (get-date).tostring(),$PFXFilePath,$ServerName)
@@ -513,7 +513,7 @@ function Install-SSLCertificate {
     #endregion
 
     #region Install Certificate on Server
-    $_Action = [scriptblock]::Create("Import-PfxCertificate -CertStoreLocation '$CertStorePath' -FilePath 'C:\Windows\Temp\$ServerName.pfx' -Password (ConvertTo-SecureString -String '$_PFXPassword' -AsPlainText -Force)")
+    $_Action = [scriptblock]::Create("Import-PfxCertificate -CertStoreLocation '$CertStorePath' -FilePath 'C:\Windows\$ServerName.pfx' -Password (ConvertTo-SecureString -String '$_PFXPassword' -AsPlainText -Force)")
     $_Cert = Invoke-Command -Session $_Session -ScriptBlock $_Action
     #endregion
 
@@ -1223,7 +1223,7 @@ function Set-DBMail {
         # Name of SQL Server Instance
         [parameter(Mandatory=$false)]
         [string]
-        $SQLInstanceName = 'Default',
+        $SQLInstance = 'Default',
 
         # Enable DBMail
         [parameter(Mandatory=$false)]
@@ -1281,7 +1281,7 @@ function Set-DBMail {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1291,7 +1291,7 @@ function Set-DBMail {
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1299,7 +1299,7 @@ function Set-DBMail {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -1453,7 +1453,7 @@ function New-DBMailOperator {
         # Name of SQL Server Instance
         [parameter(Mandatory=$false)]
         [string]
-        $SQLInstanceName = 'Default',
+        $SQLInstance = 'Default',
 
         # Name of Operator (ie. Server Team)
         [Parameter(Mandatory=$true)]
@@ -1513,7 +1513,7 @@ function New-DBMailOperator {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1523,7 +1523,7 @@ function New-DBMailOperator {
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1531,7 +1531,7 @@ function New-DBMailOperator {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -1620,7 +1620,7 @@ function Set-DBConfig {
         [parameter(Mandatory=$false)]
         [ValidateNotNullOrEmpty()]
         [string]
-        $SQLInstanceName = 'Default',
+        $SQLInstance = 'Default',
 
         # List of Databases (system db's by default)
         [Parameter(Mandatory=$false)]
@@ -1654,7 +1654,7 @@ function Set-DBConfig {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1664,7 +1664,7 @@ function Set-DBConfig {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false)) {
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1672,7 +1672,7 @@ function Set-DBConfig {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -1681,7 +1681,7 @@ function Set-DBConfig {
 
     #region Check if DB(s) exist
     foreach ($db in $DBNames) {
-        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet -Verbose:$false)) {
+        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstance -DBName $DB -Quiet -Verbose:$false)) {
             Write-Error ('Selected DB Name "{0}" does not exist on SQL Server' -f $db) -ErrorAction Stop
         }
 
@@ -1690,10 +1690,12 @@ function Set-DBConfig {
     #endregion
 
     #region Set DB Recovery Model
-    foreach ($db in $DBNames) {
-        if ($db -ne 'tempdb') {
-            Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create(('$SQL.Databases["{0}"].RecoveryModel = "{1}"' -f $db,$DBRecoveryModel))) -ErrorAction Stop
-        }
+    foreach ($db in $DBNames | Where-Object {$_ -ne 'tempdb'}) {
+        Invoke-Command -Session $_Session -ScriptBlock {
+            $_DB = $SQL.Databases["$using:db"]
+            $_DB.RecoveryModel = $using:RecoveryModel
+            $_DB.alter()
+        } -ErrorAction Stop
 
         Write-Verbose ('{0}: Set DB "{1}" to Recovery Model "{2}"' -f (get-date).tostring(),$db,$DBRecoveryModel)
     }
@@ -1701,46 +1703,34 @@ function Set-DBConfig {
 
     #region Set DB File Size/Growth
     foreach ($db in $DBNames) {
-        Invoke-Command -Session $_Session -ScriptBlock {
-            Param(
-                $db,
-                $DBFileGrowth,
-                $DBFileSize,
-                $DBFileGrowthType
-            )
+        $_Result = Invoke-Command -Session $_Session -ScriptBlock {
+            $_DB = $SQL.Databases["$using:db"]
 
-            foreach ($logfile in $SQL.Databases["$db"].LogFiles) {
-                $_change = $false
-                if ($logfile.Growth -ne $DBFileGrowth) {
-                    $logfile.Growth = $DBFileGrowth
-                    $_change = $true
+            foreach ($logfile in $_DB.LogFiles) {
+                if ($logfile.Growth -ne $using:DBFileGrowth) {
+                    $logfile.Growth = $using:DBFileGrowth
                 } 
-                if ($logfile.GrowthType -ne $DBFileGrowth) {
-                    $logfile.GrowthType = $DBFileGrowthType
-                    $_change = $true
+                if ($logfile.GrowthType -ne $using:DBFileGrowthType) {
+                    $logfile.GrowthType = $using:DBFileGrowthType
                 }
-                if ($logfile.Size -ne $DBFileSize) {
-                    $logfile.Size = $DBFileSize
-                    $_change = $true
+                if ($logfile.Size -ne $using:DBFileSize) {
+                    $logfile.Size = $using:DBFileSize
                 }
-                if ($_change) {
+                try {
                     $logfile.Alter()
                     $logfile.Refresh()
-                }
+                    ('{0}: Updated LogFile for DB - [{1}] (Growth: [{2}]) (GrowthType: [{3}]) (Size: [{4}])' -f (get-date).tostring(),$using:db,$using:DBFileGrowth,$using:DBFileGrowthType,$using:DBFileSize)
+                } Catch {}
             }
-        } -ArgumentList $db,$DBFileGrowth,$DBFileSize,$DBFileGrowthType -ErrorAction Stop
+        }
 
-        Invoke-Command -Session $_Session -ScriptBlock {
-            Param(
-                $db,
-                $DBFileGrowth,
-                $DBFileSize,
-                $DBFileGrowthType
-            )
+        if ($_Result) {
+            Write-Verbose $_Result
+        }
 
-            foreach ($filegroup in $SQL.Databases["$db"].FileGroups) {
-                foreach ($file in $filegroup.Files) {
-                    $_Change = $false
+        $_Result = Invoke-Command -Session $_Session -ScriptBlock {
+            foreach ($filegroup in $_DB) {
+                foreach ($file in $filegroup.files) {
                     if ($file.Growth -ne $DBFileGrowth) {
                         $file.growth = $DBFileGrowth
                         $_Change = $true
@@ -1753,13 +1743,18 @@ function Set-DBConfig {
                         $file.size = $DBFileSize
                         $_Change = $true
                     }
-                    if ($_Change) {
+                    try {
                         $file.alter()
                         $file.refresh()
-                    }
+                        ('{0}: Updated Data File [{1}] on DB [{2}] (Growth: [{2}]) (GrowthType: [{3}]) (Size: [{4}])' -f (get-date).tostring(),$file.name,$using:db,$using:DBFileGrowth,$using:DBFileGrowthType,$using:DBFileSize)
+                    } catch {}
                 }
             }
-        } -ArgumentList $db,$DBFileGrowth,$DBFileSize,$DBFileGrowthType -ErrorAction Stop
+
+            if ($_Result) {
+                Write-Verbose $_Result
+            }
+        }
     } 
     #endregion
 
@@ -1786,7 +1781,7 @@ function Add-DBExecRole {
         [parameter(Mandatory=$false)]
         [ValidateNotNullOrEmpty()]
         [string]
-        $SQLInstanceName = 'Default',
+        $SQLInstance = 'Default',
 
         # List of Databases (system db's by default)
         [string[]]
@@ -1794,7 +1789,7 @@ function Add-DBExecRole {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -1804,7 +1799,7 @@ function Add-DBExecRole {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -1812,7 +1807,7 @@ function Add-DBExecRole {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -1821,7 +1816,7 @@ function Add-DBExecRole {
 
     #region Check if DB(s) exist
     foreach ($db in $DBNames) {
-        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstanceName -DBName $DB -Quiet)) {
+        if (-Not (Test-SQLDBExists -Session $_Session -SQLInstance $SQLInstance -DBName $DB -Quiet)) {
             Write-Error ('Selected DB Name "{0}" does not exist on SQL Server' -f $db) -ErrorAction Stop
         }
 
@@ -1829,12 +1824,12 @@ function Add-DBExecRole {
     }
     #endregion
 
+    # TODO: Verify Role doesn't already exist
+
     #region Add db_exec role and grant stored procedure execute permissions
     foreach ($dbname in $dbnames) {
         Invoke-Command -Session $_Session -ScriptBlock {
-            Param($dbname)
-
-            $db = $SQL.Databases[$dbname]
+            $db = $SQL.Databases[$using:dbname]
             if (-Not ($db.Roles['db_exec'])) {
                 $Role = New-Object Microsoft.SQLServer.Management.SMO.DatabaseRole
                 $Role.Name = 'db_exec'
@@ -1849,7 +1844,7 @@ function Add-DBExecRole {
             $db.Grant($perms,$Role.Name)
 
             $db.alter()
-        } -ArgumentList $dbname
+        }
 
         Write-Verbose ('{0}: Added db_exec role on database "{1}"' -f (get-date).tostring(),$dbname)
     } 
@@ -1973,7 +1968,11 @@ function Set-SSLforSQLServer {
 function Set-SQLMemConfig {
     Param(
         # SQL Server to connect to with PS Remoting
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputeName','cn','HostName')]
         [string]
         $ServerName,
 
@@ -2005,7 +2004,7 @@ function Set-SQLMemConfig {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2015,7 +2014,7 @@ function Set-SQLMemConfig {
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2023,7 +2022,7 @@ function Set-SQLMemConfig {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -2032,14 +2031,19 @@ function Set-SQLMemConfig {
 
     #region Set Memory
     if ($UseDefaultMemorySettings) {
-        $_PhysicalMemory = Invoke-Command -Session $_Session -ScriptBlock {$SQL.PhysicalMemory}
+        $MemoryLimitMB = Invoke-Command -Session $_Session -ScriptBlock {
 
-        if ($_PhysicalMemory -lt 4GB/1MB) {
-            $MemoryLimitMB = $_PhysicalMemory - 1GB/1MB
-        } elseif ($_PhysicalMemory -gt 4GB/1MB -and $_PhysicalMemory -lt 16GB/1MB) {
-            $MemoryLimitMB = $_PhysicalMemory - 2GB/1MB
-        } else {
-            $MemoryLimitMB = $_PhysicalMemory - 4GB/1MB
+            switch ($SQL.PhysicalMemory) {
+                {$_ -lt 4096} {
+                    $SQL.PhysicalMemory - 1024
+                }
+                {$_ -gt 4096 -and $_ -lt 16384} {
+                    $SQL.PhysicalMemory - 2048
+                }
+                {$_ -gt 16384} {
+                    $SQL.PhysicalMemory - 4096
+                }
+            }
         }
     }
 
@@ -2047,12 +2051,14 @@ function Set-SQLMemConfig {
         Write-Error ('Value for Memory limit missing') -ErrorAction Stop
     }
 
-    Invoke-Command -Session $_Session -ScriptBlock {
-        Param($MemoryLimitMB)
-
-        $SQL.Configuration.MaxServerMemory.ConfigValue = $MemoryLimitMB
+    $_result = Invoke-Command -Session $_Session -ScriptBlock {
+        $SQL.Configuration.MaxServerMemory.ConfigValue = $using:MemoryLimitMB
         $SQL.Configuration.Alter()
-    } -ArgumentList $MemoryLimitMB
+    }
+    
+    if (-Not $_result) {
+        Write-Error ('An Error Occured Setting Max Memory on SQL to [{0}]' -f $MemoryLimitMB) -ErrorAction Stop
+    }
 
     Write-Verbose ('{0}: SQL Max Memory Configured as "{1}"' -f (get-date).tostring(),$MemoryLimitMB)
     #endregion
@@ -2103,7 +2109,7 @@ function Set-SQLBackupConfig {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2113,7 +2119,7 @@ function Set-SQLBackupConfig {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2121,7 +2127,7 @@ function Set-SQLBackupConfig {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -2141,23 +2147,22 @@ function Set-SQLBackupConfig {
     #endregion
 
     #region Configure Backup Settings
-    if ($EnableBackupCompression) {
-        Invoke-Command -Session $_Session -ScriptBlock {
-            $SQL.Configuration.DefaultBackupCompression.ConfigValue = 1
-            $SQL.Configuration.Alter()
-        }
+    
+    Invoke-Command -Session $_Session -ScriptBlock {
+        $SQL.Configuration.DefaultBackupCompression.ConfigValue = $using:EnableBackupCompression
+        $SQL.Configuration.Alter()
     }
-
+    
     Write-Verbose ('{0}: Updated Backup Compression to be enabled' -f (get-date).tostring())
     
     Invoke-command -Session $_Session -ScriptBlock {
-        Param($DefaultBackupPath)
-        $SQL.BackupDirectory = $DefaultBackupPath
+        $SQL.BackupDirectory = $using:DefaultBackupPath
         $SQL.Alter()
-    } -ArgumentList $_Path.FullName
+    }
 
     Write-Verbose ('{0}: Updated Default Backup Path to "{1}"' -f (get-date).tostring(),$_path.FullName)
     
+    # TODO: Validate User Access
     if ($AddRights) {
         if (-Not $svcAccountName) {
             Write-Error ('Service Account Name not provided to add rights to folder.') -ErrorAction Stop
@@ -2199,16 +2204,16 @@ function Set-SQLJobHistory {
         # Value to Set SQL Job History
         [Parameter(Mandatory=$false)]
         [Int]
-        $JobHistoryMax = 10000,
+        $JobHistoryMax = 1000,
         
         # Value to Set SQL History
         [Parameter(Mandatory=$false)]
         [Int]
-        $HistoryMax = 1000
+        $HistoryMax = 10000
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2218,7 +2223,7 @@ function Set-SQLJobHistory {
     #endregion
  
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2226,7 +2231,7 @@ function Set-SQLJobHistory {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -2244,15 +2249,10 @@ function Set-SQLJobHistory {
     #region Set History Settings
     if ($_Edition -notlike '*express*') {
         Invoke-Command -Session $_Session -ScriptBlock {
-            Param(
-                $HistoryMax,
-                $JobHistoryMax
-            )
-
-            $SQL.JobServer.MaximumHistoryRows = $HistoryMax
-            $SQL.JobServer.MaximumJobHistoryRows = $JobHistoryMax
-
-        } -ArgumentList $HistoryMax,$JobHistoryMax
+            $SQL.JobServer.MaximumHistoryRows = $using:HistoryMax
+            $SQL.JobServer.MaximumJobHistoryRows = $using:JobHistoryMax
+            $SQL.JobServer.Alter()
+        }
 
         Write-Verbose ('{0}: Updated Job History to "{1}" and History to "{2}"' -f (get-date).tostring(),$JobHistoryMax,$HistoryMax)
     } else {
@@ -2280,7 +2280,7 @@ function Set-SQLPSExecutionPolicy {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
     
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2290,14 +2290,12 @@ function Set-SQLPSExecutionPolicy {
     #endregion
 
     Invoke-Command -Session $_Session -ScriptBlock {
-        Param($ExecutionPolicy)
-
         $Items = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.SqlServer.Management.PowerShell.sqlps*'
 
         foreach ($item in $items) {
-            $Item | Set-ItemProperty -Name 'ExecutionPolicy' -Value $ExecutionPolicy
+            $Item | Set-ItemProperty -Name 'ExecutionPolicy' -Value $using:ExecutionPolicy
         }
-    } -ArgumentList $ExecutionPolicy -ErrorAction Stop
+    } -ErrorAction Stop
 
     Write-Verbose ('{0}: Updated Execution Policy for SQLPS to "{1}"' -f (get-date).tostring(),$ExecutionPolicy)
 }
@@ -2336,7 +2334,7 @@ function Set-SQLListener {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
     
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2623,7 +2621,7 @@ function Enable-FSRMforSQL {
     )
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
     
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2633,7 +2631,7 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Check for PS Module
-    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+    if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2641,7 +2639,7 @@ function Enable-FSRMforSQL {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
@@ -2653,7 +2651,9 @@ function Enable-FSRMforSQL {
 
     foreach ($_Path in $_Paths) {
         $_PathResult = $null
-        $_PathResult = Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create("Get-Item -Path $_Path -ErrorAction SilentlyContinue"))
+        $_PathResult = Invoke-Command -Session $_Session -ScriptBlock {
+            Get-Item $using:_Path -ErrorAction SilentlyContinue
+        }
 
         if (-Not $_PathResult) {
             Write-Error ('Path "{0}" not found on "{1}"' -f $_Path, $_Session.ComputerName) -ErrorAction Stop
@@ -2710,7 +2710,7 @@ function Enable-FSRMforSQL {
             Write-Error ('Install of FSRM feature did not succeed') -ErrorAction Stop
         }
 
-        Write-Verbose ('{0}: Installed FSRM Feature Successfully')
+        Write-Verbose ('{0}: Installed FSRM Feature Successfully' -f (get-date).tostring())
 
         Invoke-Command -Session $_Session -ScriptBlock {Import-Module FileServerResourceManager; Restart-Service srmsvc} -ErrorAction SilentlyContinue | Out-Null
     }
@@ -2910,7 +2910,7 @@ function Set-SQLMaintenanceJobs {
     $_table += [PSCustomObject]@{
         ShortName = 'DBCheck';
         FullName = 'SQL Maintenance - DB Check';
-        CodeURL = '';
+        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/DBCheck.ps1';
     }
     $_table += [PSCustomObject]@{
         ShortName = 'Schedule';
@@ -2920,7 +2920,7 @@ function Set-SQLMaintenanceJobs {
     #endregion
 
     #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds
+    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
 
     if (-Not $_Session -or $_Session.State -ne 'Opened') {
         Write-Error ('Session Validation Failed') -ErrorAction Stop
@@ -2930,7 +2930,7 @@ function Set-SQLMaintenanceJobs {
     #endregion
 
     #region Check for PS Module
-     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install)) {
+     if (-Not (Test-PSModuleInstalled -Session $_Session -ModuleName SQLServer -Install -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('Missing PS Module on Server') -ErrorAction Stop
     }
 
@@ -2938,7 +2938,7 @@ function Set-SQLMaintenanceJobs {
     #endregion
 
     #region Test SQL Connection
-    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance)) {
+    if (-Not (Test-SQLConnection -Session $_Session -SQLInstance $SQLInstance -Verbose:$false -ErrorAction SilentlyContinue)) {
         Write-Error ('A problem occured connecting to SQL Server') -ErrorAction Stop
     }
 
