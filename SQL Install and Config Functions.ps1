@@ -2886,37 +2886,38 @@ function Set-SQLMaintenanceJobs {
     )
 
     #region Job Creation Hash Table
-    $_table = @()
-    $_table += [PSCustomObject]@{
-        ShortName = 'FileSizes';
-        FullName = 'SQL Maintenance - File Sizes';
-        CodeURL = '';
-    }
-    $_table += [PSCustomObject]@{
-        ShortName = 'FullBackup';
-        FullName = 'SQL Maintenance - Full Backup';
-        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLBackup.ps1';
-    }
-    $_table += [PSCustomObject]@{
-        ShortName = 'LogBackup';
-        FullName = 'SQL Maintenance - Log Backup';
-        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLLogBackup.ps1';
-    }
-    $_table += [PSCustomObject]@{
-        ShortName = 'Indexes';
-        FullName = 'SQL Maintenance - Indexes';
-        CodeURL = '';
-    }
-    $_table += [PSCustomObject]@{
-        ShortName = 'DBCheck';
-        FullName = 'SQL Maintenance - DB Check';
-        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/DBCheck.ps1';
-    }
-    $_table += [PSCustomObject]@{
-        ShortName = 'Schedule';
-        FullName = 'SQL Maintenance';
-        CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/JobStartTemplate.ps1';
-    }
+    $_table = ( 
+        [PSCustomObject]@{
+            ShortName = 'FileSizes';
+            FullName = 'SQL Maintenance - File Sizes';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/Fix%20File%20Sizes.ps1';
+        },
+        [PSCustomObject]@{
+            ShortName = 'FullBackup';
+            FullName = 'SQL Maintenance - Full Backup';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLBackup.ps1';
+        },
+        [PSCustomObject]@{
+            ShortName = 'LogBackup';
+            FullName = 'SQL Maintenance - Log Backup';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/SQLLogBackup.ps1';
+        },
+        [PSCustomObject]@{
+            ShortName = 'Indexes';
+            FullName = 'SQL Maintenance - Indexes';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/Indexes.ps1';
+        },
+        [PSCustomObject]@{
+            ShortName = 'DBCheck';
+            FullName = 'SQL Maintenance - DB Check';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/DBCheck.ps1';
+        },
+        [PSCustomObject]@{
+            ShortName = 'Schedule';
+            FullName = 'SQL Maintenance';
+            CodeURL = 'https://raw.githubusercontent.com/davesil2/Scripts/master/SQLJobs/JobStartTemplate.ps1';
+        }
+    )
     #endregion
 
     #region Check PS Session to Server and create
@@ -2970,11 +2971,18 @@ function Set-SQLMaintenanceJobs {
 
         if ($UpdateExisting -and $_Job.ShortName -in $_Overlapping.ShortName) {
             if ($_Job.ShortName -ne 'Schedule') {
-                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep = $SQL.JobServer.Jobs["{0}"].JobSteps[0]' -f $_job.FullName))
-                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep.Command = {0}' -f $_code))
-                Invoke-Command -Session $_Session -ScriptBlock ([scriptblock]::Create('$JobStep.Alter()'))
+                Invoke-Command -Session $_Session -ScriptBlock {
+                    $JobStep = $SQL.JobServer.Jobs["$($using:_job.FullName)"].JobStep[0]
+                    $JobStep.Command = "$using:_code"
+                    $JobStep.Alter()
+                }
             } else {
-                
+                Invoke-Command -Session $_Session -ScriptBlock {
+                    foreach ($_Step in $SQL.JobServer.Jobs["SQL Maintenance"].JobSteps) {
+                        $_Step.Command = "$using:_code"
+                        $_step.Alter()
+                    }
+                }
             }
         } else {
             Invoke-Command -Session $_Session -ScriptBlock {
@@ -2982,12 +2990,12 @@ function Set-SQLMaintenanceJobs {
     
                 $job = New-Object Microsoft.SqlServer.Management.Smo.Agent.Job
                 $job.Parent = $SQL.JobServer
-                $job.Name = $_Job.FullName
+                $job.Name = $using:_Job.FullName
                 $job.Create()
     
                 $job.EmailLevel = 'OnFailure'
-                if ($SQL.Jobserver.Operators["$_Operator"]) {
-                    $job.OperatorToEmail = $_Operator
+                if ($SQL.Jobserver.Operators["$using:_Operator"]) {
+                    $job.OperatorToEmail = $using:_Operator
                 }
                 $job.IsEnabled = $true
                 $job.OwnerLoginName = 'sa'
@@ -2999,10 +3007,10 @@ function Set-SQLMaintenanceJobs {
                 $job.ApplyToTargetServer($targetServer)
                 $job.Alter()
                 
-                if ($_Job.ShortName -eq 'Schedule') {
+                if ($using:_Job.ShortName -eq 'Schedule') {
                     $_Jobs = ('SQL Maintenance - DB Check','SQL Maintenance - Fix File Sizes','SQL Maintenance - Indexes','SQL Maintenance - Full Backup','SQL Maintenance - Log Backup')
                 } else {
-                    $_Jobs = $_Job.FullName
+                    $_Jobs = $using:_Job.FullName
                 }
 
                 foreach ($_j in $_Jobs) {
@@ -3020,7 +3028,7 @@ function Set-SQLMaintenanceJobs {
                         }
                         $jobstep.SubSystem = 'PowerShell'
                         $jobstep.JobStepFlags = 'AppendAllCmdExecOutputToJobHistory'
-                        $jobStep.Command = $_code
+                        $jobStep.Command = $using:_code
                         $jobstep.Create()
                     } else {
                         Write-Warning ('Job "{0}" was not found to be added as job step' -f $_j)
@@ -3029,20 +3037,20 @@ function Set-SQLMaintenanceJobs {
 
                 if ($_Jobs.Count -gt 1) {
                     # Create Schedule to execute job
-                    if (-Not ($SQL.JobServer.SharedSchedules["$jobfrequency - $JobStartTime"])) {
+                    if (-Not ($SQL.JobServer.SharedSchedules["$using:jobfrequency - $using:JobStartTime"])) {
                         $jsch = new-object Microsoft.SqlServer.Management.Smo.Agent.JobSchedule
                         $jsch.Parent = $job
-                        $jsch.Name = "$jobFrequency - $JobStarttime"
+                        $jsch.Name = "$using:jobFrequency - $using:JobStartTime"
                         $jsch.Create()
     
                         $jsch.FrequencyInterval = 1
-                        $jsch.ActiveStartTimeOfDay = $jobStartTime
+                        $jsch.ActiveStartTimeOfDay = $using:jobStartTime
                         $jsch.FrequencySubDayTypes = 'Once'
-                        $jsch.FrequencyTypes = $jobFrequency
+                        $jsch.FrequencyTypes = $using:jobFrequency
                         $jsch.IsEnabled = $true
                         $jsch.alter()
                     } else {
-                        $Job.AddSharedSchedule($sql.JobServer.SharedSchedules["$JobFrequency - $JobStartTime"].id)
+                        $Job.AddSharedSchedule($sql.JobServer.SharedSchedules["$using:JobFrequency - $using:JobStartTime"].id)
                     }
                 }
             } -ArgumentList $_code, $_Job, $OperatorName, $jobFrequency, $jobStartTime.toString()
