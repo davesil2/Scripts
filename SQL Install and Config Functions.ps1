@@ -2862,7 +2862,7 @@ function Set-SQLMaintenanceJobs {
 
         # Which Jobs will be created/updated
         [Parameter(Mandatory=$false)]
-        [ValueSet('FileSize','FullBackup','LogBackup','Indexes','DBCheck','Schedule')]
+        [ValidateSet('FileSize','FullBackup','LogBackup','Indexes','DBCheck','Schedule')]
         [string[]]
         $Jobs = ('FileSizes','FullBackup','LogBackup','Indexes','DBCheck','Schedule'),
 
@@ -2871,9 +2871,9 @@ function Set-SQLMaintenanceJobs {
         [string]
         $OperatorName,
 
-        [ValueSet('Daily','Weekly')]
+        [ValidateSet('Daily','Weekly')]
         [string]
-        $jobFrequency,
+        $jobFrequency = 'Daily',
 
         [timespan]
         $jobStartTime = '23:00:00',
@@ -2966,8 +2966,8 @@ function Set-SQLMaintenanceJobs {
 
     foreach ($_job in $_SelectedJobs) {
         # Get Code for Job from URL
-        $_code = (Invoke-WebRequest -Uri $_Job.CodeUrl).Content.split([environment]::newline) -join ([char]13 + [char]10)
-        Write-Verbose ('{0}: Downloaded Code for Job "{1}" from "{2}"' -f (get-date).tostring(),$_job.FullName,$_job.CodURL)
+        $_code = (Invoke-WebRequest -Uri $_Job.CodeUrl -Verbose:$false).Content.split([char]10) -join ([char]13 + [char]10)
+        Write-Verbose ('{0}: Downloaded Code for Job "{1}" from "{2}"' -f (get-date).tostring(),$_job.FullName,$_job.CodeURL)
 
         if ($UpdateExisting -and $_Job.ShortName -in $_Overlapping.ShortName) {
             if ($_Job.ShortName -ne 'Schedule') {
@@ -2986,16 +2986,16 @@ function Set-SQLMaintenanceJobs {
             }
         } else {
             Invoke-Command -Session $_Session -ScriptBlock {
-                Param($_code,$_Job,$_Operator,$jobFrequency,$jobStartTime)
-    
+                # Create Job
                 $job = New-Object Microsoft.SqlServer.Management.Smo.Agent.Job
                 $job.Parent = $SQL.JobServer
                 $job.Name = $using:_Job.FullName
                 $job.Create()
     
+                # Configure Job
                 $job.EmailLevel = 'OnFailure'
-                if ($SQL.Jobserver.Operators["$using:_Operator"]) {
-                    $job.OperatorToEmail = $using:_Operator
+                if ($SQL.Jobserver.Operators["$using:OperatorName"]) {
+                    $job.OperatorToEmail = $using:OperatorName
                 }
                 $job.IsEnabled = $true
                 $job.OwnerLoginName = 'sa'
@@ -3007,6 +3007,7 @@ function Set-SQLMaintenanceJobs {
                 $job.ApplyToTargetServer($targetServer)
                 $job.Alter()
                 
+                # Define Steps
                 if ($using:_Job.ShortName -eq 'Schedule') {
                     $_Jobs = ('SQL Maintenance - DB Check','SQL Maintenance - Fix File Sizes','SQL Maintenance - Indexes','SQL Maintenance - Full Backup','SQL Maintenance - Log Backup')
                 } else {
@@ -3017,26 +3018,26 @@ function Set-SQLMaintenanceJobs {
                     if ($SQL.JobServer.Jobs["$_j"]) {
                         $jobStep = New-Object Microsoft.SqlServer.Management.Smo.Agent.JobStep
                         $jobStep.Parent = $job
-                        $jobStep.Name = ("Exec" + $_J.Split('-')[1].trim())
+                        $jobStep.Name = ("Exec - " + $_J.Split('-')[1].trim())
                         $jobStep.DatabaseName = 'master'
                         $jobstep.OnFailAction = 'QuitWithFailure'
-                        if ($_Jobs.count -gt 1) {
+                        if ($_j -eq 'SQL Maintenance') {
                             $jobStep.OnSuccessAction = 'Gotonextstep'
-                            $_code.Replace('{0}',"'$_j'")
+                            $_code = $_code.Replace('{0}',"'$_j'")
                         } else {
                             $jobStep.OnSuccessAction = 'QuitWithSuccess'
                         }
                         $jobstep.SubSystem = 'PowerShell'
                         $jobstep.JobStepFlags = 'AppendAllCmdExecOutputToJobHistory'
-                        $jobStep.Command = $using:_code
+                        $jobStep.Command = "$using:_code"
                         $jobstep.Create()
                     } else {
                         Write-Warning ('Job "{0}" was not found to be added as job step' -f $_j)
                     }
                 }
-
+                
+                # Create or Assign Schedule to execute job
                 if ($_Jobs.Count -gt 1) {
-                    # Create Schedule to execute job
                     if (-Not ($SQL.JobServer.SharedSchedules["$using:jobfrequency - $using:JobStartTime"])) {
                         $jsch = new-object Microsoft.SqlServer.Management.Smo.Agent.JobSchedule
                         $jsch.Parent = $job
@@ -3053,7 +3054,9 @@ function Set-SQLMaintenanceJobs {
                         $Job.AddSharedSchedule($sql.JobServer.SharedSchedules["$using:JobFrequency - $using:JobStartTime"].id)
                     }
                 }
-            } -ArgumentList $_code, $_Job, $OperatorName, $jobFrequency, $jobStartTime.toString()
+            }
+
+            Write-Verbose ('{0}: CREATED - Job with Steps [{1}]' -f (get-date).ToString(),$_job.fullname)
         }
     }
 }
