@@ -1,5 +1,6 @@
 # Set Variables
 $_Instance = "$(ESCAPE_DQUOTE(SRVR))"
+$_JobSucceded = $true
 
 # fix Instance if default
 if ($_Instance -notlike '*\*') {
@@ -28,9 +29,14 @@ foreach ($_db in $_dbs) {
     if ($_db -and $_db.tables) {
         try {
             $_db.CheckTables('None')
-            ('Database [{0}] Check Completed.' -f $_db.name)
+            ('Database [{0}] - Check Completed.' -f $_db.name)
         } catch {
-            ('Database [{0}] Check Failed!' -f $_db.name)
+            ('Database [{0}] - Check Failed!' -f $_db.name)
+            $_JobSucceded = $false
         }
     }
+}
+
+if (-Not $_JobSucceded) {
+    throw ('Job Failed, see output...')
 }
