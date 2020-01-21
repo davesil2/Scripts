@@ -27,7 +27,7 @@ if ($_SQL.isClustered) {
 foreach ($_db in $_dbs) {
     if ($_db -and $_db.tables) {
         try {
-            $db.CheckTables('None')
+            $_db.CheckTables('None')
             ('Database [{0}] Check Completed.' -f $_db.name)
         } catch {
             ('Database [{0}] Check Failed!' -f $_db.name)
