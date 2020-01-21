@@ -2262,42 +2262,61 @@ function Set-SQLJobHistory {
 }
 
 function Set-SQLPSExecutionPolicy {
+    [CmdletBinding()]
     Param(
         # Server to Connect and configure SQL History
-        [Parameter(Mandatory=$true)]
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Computer','ComputerName','HostName','cn','$Server')]
         [string]
         $ServerName,
         
         # Optional Credentials for connecting to Server
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Creds','Credential')]
         [PSCredential]
         $ServerCreds,
 
-        [Parameter(Mandatory=$false)]
+        # Value of Execution Policy to set
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateSet('Unrestricted','RemoteSigned','AllSigned','Bypass','Default','Restricted')]
         [string]
         $ExecutionPolicy = 'Unrestricted'
     )
 
-    #region Check PS Session to Server and create
-    $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
-    
-    if (-Not $_Session -or $_Session.State -ne 'Opened') {
-        Write-Error ('Session Validation Failed') -ErrorAction Stop
-    }
-
-    Write-Verbose ('{0}: VALIDATED - Session to Server Validated' -f (get-date).tostring())
-    #endregion
-
-    Invoke-Command -Session $_Session -ScriptBlock {
-        $Items = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.SqlServer.Management.PowerShell.sqlps*'
-
-        foreach ($item in $items) {
-            $Item | Set-ItemProperty -Name 'ExecutionPolicy' -Value $using:ExecutionPolicy
+    Process {
+        #region Check PS Session to Server and create
+        $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $ServerCreds -Verbose:$false -ErrorAction SilentlyContinue
+            
+        if (-Not $_Session -or $_Session.State -ne 'Opened') {
+            Write-Error ('Session Validation Failed') -ErrorAction Stop
         }
-    } -ErrorAction Stop
 
-    Write-Verbose ('{0}: Updated Execution Policy for SQLPS to "{1}"' -f (get-date).tostring(),$ExecutionPolicy)
+        Write-Verbose ('{0}: VALIDATED - Session to Server Validated' -f (get-date).tostring())
+        #endregion
+
+        Invoke-Command -Session $_Session -ScriptBlock {
+            $Items = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.SqlServer.Management.PowerShell.sqlps*'
+    
+            foreach ($item in $items) {
+                $Item | Set-ItemProperty -Name 'ExecutionPolicy' -Value $using:ExecutionPolicy
+            }
+        } -ErrorAction Stop
+    
+        Write-Verbose ('{0}: Updated Execution Policy for SQLPS to "{1}"' -f (get-date).tostring(),$ExecutionPolicy)
+    }
+    End {
+        # Cleanup PowerShell Session
+        $_Session | Remove-PSSession
+    }
 }
 
 function Set-SQLListener {
@@ -2845,42 +2864,64 @@ function Set-SQLMaintenanceJobs {
     [CmdletBinding()]
     Param(
         # Server to Connect and configure SQL History
-        [Parameter(Mandatory=$true)]
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','HostName','cn')]
         [string]
         $ServerName,
         
         # Optional Credentials for connecting to Server
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Creds','Credential')]
         [PSCredential]
         $ServerCreds,
 
         # Instance Name of SQL to configure
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Instance','SQLInstanceName','InstanceName')]
         [ValidateNotNullOrEmpty()]
         [string]
         $SQLInstance = 'Default',
 
         # Which Jobs will be created/updated
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateSet('FileSize','FullBackup','LogBackup','Indexes','DBCheck','Schedule')]
         [string[]]
         $Jobs = ('FileSizes','FullBackup','LogBackup','Indexes','DBCheck','Schedule'),
 
         # Name of Operator to use for job failures
-        [Parameter(Mandatory=$false)]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [string]
         $OperatorName,
 
+        # Frequency of Job Execution
         [ValidateSet('Daily','Weekly')]
         [string]
         $jobFrequency = 'Daily',
 
+        # Time to Start Job
         [timespan]
         $jobStartTime = '23:00:00',
 
+        # Update Existing Jobs if they exist
         [switch]
         $UpdateExisting,
 
+        # Ignore Existing Jobs
         [switch]
         $IgnoreExisting
     )
