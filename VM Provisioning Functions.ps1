@@ -292,7 +292,7 @@ function New-VMfromTemplate {
     } catch {}
     finally {    
         if ($result) {
-            Write-Host ('IP Address currently resolves to an existing name, may be in use!') -ErrorAction Stop
+            Write-Error ('IP Address currently resolves to an existing name, may be in use!') -ErrorAction Stop
         }
     }
     Write-Verbose ('{0}: VALIDATED - IPAddress "{1}" with subnet "{2}" and gateway "{3}" ready to use for server "{4}"' -f (get-date).ToString(),$_IPAddress,$_IPSubnet,$_IPGateway,$ServerName)
@@ -802,190 +802,258 @@ function Add-DisktoVM {
     [CmdletBinding()]
     param(
         #Fully Qualified Domain Name to vCenter Server
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenter','vCenterServer')]
         [string]
         $vCenterFQDN,
         
         #Credentials to Connect to vCenter (if not provided your current user must work)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterCredential')]
         [pscredential]
         $vCenterCreds,
         
         #Credentials to be able to connect to server with PowerShell Remoting
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('DomainCredential')]
         [pscredential]
         $DomainCreds,
         
         #Name of Server to configure (must match in vCenter)
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','HostName','Computer','Server')]
         [string]
         $ServerName,
 
         #Datastore to add Disk to (default will be where the vmx file is)
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [String]
         $vCenterDatastore = '',
         
         #Server OS Path to mount the disk to (can be Drive Letter E:\ or path to Mount point E:\SQLData01)
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('DiskPath','Path')]
         [string]
         $ServerDiskPath,
         
         #Size of Disk to create for VM (Script will make sure it can fit on datastore)
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Size','DiskSize','SizeGB')]
         [int]
         $ServerDiskSizeGB,
         
         #Type of Disk Allocation on VMFS
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('DiskType','Type')]
         [ValidateSet('Thin','Thick')]
         [String]
         $ServerDiskType = 'Thin',
         
         #Label to specify on Disk in OS
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Lable','DiskLabel')]
         [String]
         $ServerDiskLabel = ('{0} - {1}' -f $ServerDiskPath,$ServerName),
         
         #NTFS Allocation Unit Size (4Kb, 8Kb, 16Kb, 32Kb, 64Kb)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateSet('4kb','8kb','16kb','32kb','64kb')]
         [string]
         $AllocationUnitSize = '4Kb',
         
         #Remove default ACL's on disk (users access and creator owner)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $CleanDiskACL = $true
     )
 
-    #region Validate Variables
+    Process {
+        #region Validate Variables
 
-    #region vCenter Validation
-    $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
-    if (-Not $_vCenter) {
-        if ($global:DefaultVIServers.Count -gt 0) {
-            VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+        #region vCenter Validation
+        $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
+        if (-Not $_vCenter) {
+            if ($global:DefaultVIServers.Count -gt 0) {
+                VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
 
-            Write-Verbose ('{0}: Disconnected form Existing vCenters' -f (get-date).tostring())
-        }
-        try{
-            if ($vCenterCreds) {
-                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
-            } else {
-                $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                Write-Verbose ('{0}: VALIDATED - Disconnected form Existing vCenters' -f (get-date).tostring())
             }
-        } catch {
-            Write-Error ('A Problem occured connecting to vCenter!') -ErrorAction Stop
+            try{
+                if ($vCenterCreds) {
+                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+                } else {
+                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                }
+            } catch {
+                Write-Error ('PROBLEM: A Problem occured connecting to vCenter!') -ErrorAction Stop
+            }
         }
-    }
-    if (-Not $_vCenter) {
-        Write-Error ('No vCenter Connection!') -ErrorAction Stop
-    }
-    Write-Verbose ('{0}: VALIDATED - vCenter "{1}" connection established as "{2}"' -f (get-date).tostring(),$_vCenter.Name, $_vCenter.User)
-    #endregion
-
-    #region Validate VM, OS, and Disk Path
-    $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false
-
-    if (-Not $_VM) {
-        Write-Error ('VM not found!') -ErrorAction Stop
-    }
-
-    if ($DomainCreds) {
-        $_session = New-PSSession -ComputerName $ServerName -Credential $DomainCreds -Verbose:$false
-    } else {
-        $_session = New-PSSession -ComputerName $ServerName -Verbose:$false
-    }
-    
-    if (-Not $_session) {
-        Write-Error ('Unable to connect to PS Remoting!') -ErrorAction Stop
-    }
-
-
-    if (Invoke-Command -Session $_Session -ScriptBlock {param ($path) Test-Path -Path $Path -ErrorAction SilentlyContinue} -ArgumentList $ServerDiskPath) {
-        Write-Error ('Path/Drive already exists!') -ErrorAction Stop
-    }
-
-    Write-Verbose ('{0}: Ready to Add Disk "{1}" at "{2}" GB to VM "{3}"' -f (get-date).tostring(),$ServerDiskPath,$ServerDiskSizeGB,$_VM.Name)
-
-    #endregion
-
-    #region Validate Datastore and Disk Space
-    if (-Not $vCenterDataStore) {
-        $_Datastore = VMware.VimAutomation.Core\Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
-        Write-Verbose ('{0}: No Datastore Selected, Using VM "{1}" Default "{2}"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
-    } else {
-        $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
-        $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false
-        if ($DatastoreClusters) {
-            $_Datastore = $DatastoreClusters | Where-Object {$_.Name -like $vCenterDataStore}
+        if (-Not $_vCenter) {
+            Write-Error ('PROBLEM: No vCenter Connection!') -ErrorAction Stop
         }
-        if ($Datastores -and -Not $_Datastore) {
-            $_Datastore = $Datastores | Where-Object {$_.Name -like $vCenterDataStore}
+        Write-Verbose ('{0}: VALIDATED - vCenter "{1}" connection established as "{2}"' -f (get-date).tostring(),$_vCenter.Name, $_vCenter.User)
+        #endregion
+
+        #region Validate VM, OS, and Disk Path
+        $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
+
+        if (-Not $_VM) {
+            Write-Error ('PROBLEM: VM not found!') -ErrorAction Stop
         }
-        if (-Not $_Datastore) {
-            Write-Error ('No matching datastore found!') -ErrorAction Stop
+
+        if ($DomainCreds) {
+            $_session = New-PSSession -ComputerName $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
+        } else {
+            $_session = New-PSSession -ComputerName $ServerName -Verbose:$false -ErrorAction SilentlyContinue
         }
-        if ($_Datastore.Count -ne 1) {
-            Write-Error ('More than one matching datastore found!') -ErrorAction Stop
+        
+        if (-Not $_session) {
+            Write-Error ('PROBLEM: Unable to connect to PS Remoting!') -ErrorAction Stop
         }
-        Write-Verbose ('{0}: Using Datastore: "{1}" for Disk Placement' -f (get-date).tostring(),$_Datastore.Name)
+
+
+        if (Invoke-Command -Session $_Session -ScriptBlock {param ($path) Test-Path -Path $Path -ErrorAction SilentlyContinue} -ArgumentList $ServerDiskPath) {
+            Write-Error ('PROBLEM: Path/Drive already exists!') -ErrorAction Stop
+        }
+
+        Write-Verbose ('{0}: VALIDATED - Ready to Add Disk "{1}" at "{2}" GB to VM "{3}"' -f (get-date).tostring(),$ServerDiskPath,$ServerDiskSizeGB,$_VM.Name)
+
+        #endregion
+
+        #region Validate Datastore and Disk Space
+        if (-Not $vCenterDataStore) {
+            $_Datastore = VMware.VimAutomation.Core\Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
+            Write-Verbose ('{0}: VALIDATED - No Datastore Selected, Using VM "{1}" Default "{2}"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
+        } else {
+            $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
+            $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false
+            if ($DatastoreClusters) {
+                $_Datastore = $DatastoreClusters | Where-Object {$_.Name -like $vCenterDataStore}
+            }
+            if ($Datastores -and -Not $_Datastore) {
+                $_Datastore = $Datastores | Where-Object {$_.Name -like $vCenterDataStore}
+            }
+            if (-Not $_Datastore) {
+                Write-Error ('PROBLEM: No matching datastore found!') -ErrorAction Stop
+            }
+            if ($_Datastore.Count -ne 1) {
+                Write-Error ('PROBLEM: More than one matching datastore found!') -ErrorAction Stop
+            }
+            Write-Verbose ('{0}: VALIDATED - Using Datastore: "{1}" for Disk Placement' -f (get-date).tostring(),$_Datastore.Name)
+        }
+        
+        $SpaceUsage = 0
+        if ($vCenterDiskType -ne 'Thin') {
+            $SpaceUsage = $ServerDiskSizeGB
+        } 
+        if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB) -gt ($_datastore.CapacityGB *.95)) {
+            Write-Error ('PROBLEM: Datastore using greater than 95% of datastore!') -ErrorAction Stop
+        }
+        if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB) -gt ($_datastore.CapacityGB *.8)) {
+            Write-Warning ('PROBLEM: Datastore using greater than 80% of datastore!') -ErrorAction Stop
+        }
+        if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB + $SpaceUsage) -gt ($_datastore.CapacityGB *.95)) {
+            Write-Error ('PROBLEM: Datastore Usage with VM will be greater than 95%!') -ErrorAction Stop
+        }
+        Write-Verbose ('{0}: VALIDATED - Using Datastore "{1}" which has "{2}" GB Free' -f (get-date).tostring(),$_Datastore.Name,$_Datastore.FreeSpaceGB)
+        #endregion
+
+        #endregion
+
+        #region Create Configure Disk
+
+        #region Create Disk on VM
+        $_VM | VMware.VimAutomation.Core\New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
+
+        Write-Verbose ('{0}: Disk Created (VM Name: [{1}] - Size GB: [{2}] - DataStore: [{3}] - Type: [{4}])' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$_Datastore.Name,$ServerDiskType)
+        #endregion
+
+        #region Create Partion, format and mount
+        $_Volume = Invoke-Command -Session $_session -ScriptBlock {
+            $_Disk = Get-Disk | Where-Object {$_.partitionStyle -eq 'RAW'}
+            $_Disk | Initialize-Disk
+            $_Partition = $_Disk | New-Partition -UseMaximumSize -AssignDriveLetter
+            $_Partition | Format-Volume -AllocationUnit $using:AllocationUnitSize -Confirm:$false -NewFileSystemLabel $using:ServerDiskLabel
+        }
+
+        if (-Not $_Volume) {
+            Write-Error ('PROBLEM: An Error Occured configuring (Path: [{0}] - Label: [{1}])' -f $ServerDiskPath,$ServerDiskLabel)
+        }
+
+        Write-Verbose ('{0}: Disk Added - (TempDriveLetter: [{1}] - Label: [{4}])' -f (get-date).tostring(),$_Volume.DriveLetter,$ServerDiskLabel)
+
+        # Remove User and Creator Owner ACL's
+        if ($CleanDiskACL) {
+            Invoke-Command -Session $_Session -ScriptBlock {
+                $_ACL = Get-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
+                $_ACL.Access | Where-Object {
+                    $_.IdentityReference -in ('BUILTIN\Users','CREATOR OWNER')
+                } | ForEach-Object {
+                    $_ACL.RemoveAccessRule($_) | Out-Null
+                }
+                $_ACL | Set-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '\\?\volume*'})
+            }
+            
+            Write-Verbose ('{0}: Removed Disk Default Permissions for Users and Creator Owner...' -f (get-date).tostring())
+        }
+
+        # Create Folder if it's a Mount Point
+        if ($ServerDiskPath.Split('\')[1]) {
+            Invoke-Command -Session $_session -ScriptBlock {
+                New-Item $using:ServerDiskPath -ItemType container | Out-Null
+            }
+
+            Write-Verbose ('{0}: Created Folder for Mount Point at "{1}"' -f (get-date).tostring(),$ServerDiskPath)
+        } 
+
+        # Remove Temporary Drive Letter and Add mounting path
+        Invoke-Command -Session $_session -ScriptBlock {
+            $_Partition | Remove-PartitionAccessPath -AccessPath ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
+            $_Partition | Add-PartitionAccessPath -AccessPath $using:ServerDiskPath
+        }
+
+        Write-Verbose ('{0}: Assigned Disk Access path [{1}]' -f $ServerDiskPath)
+        #endregion
+
+        #endregion
     }
-    
-    $SpaceUsage = 0
-    if ($vCenterDiskType -ne 'Thin') {
-        $SpaceUsage = $ServerDiskSizeGB
-    } 
-    if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB) -gt ($_datastore.CapacityGB *.95)) {
-        Write-Error ('Datastore using greater than 95% of datastore!') -ErrorAction Stop
+    End {
+        $_session | Remove-PSSession
     }
-    if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB) -gt ($_datastore.CapacityGB *.8)) {
-        Write-Warning ('Datastore using greater than 80% of datastore!') -ErrorAction Stop
-    }
-    if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB + $SpaceUsage) -gt ($_datastore.CapacityGB *.95)) {
-        Write-Error ('Datastore Usage with VM will be greater than 95%!') -ErrorAction Stop
-    }
-    Write-Verbose ('{0}: Using Datastore "{1}" which has "{2}" GB Free' -f (get-date).tostring(),$_Datastore.Name,$_Datastore.FreeSpaceGB)
-    #endregion
-
-    #endregion
-
-    #region Create Configure Disk
-
-    #region Create Disk on VM
-    $_VM | VMware.VimAutomation.Core\New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
-
-    Write-Verbose ('{0}: Disk Created on VM "{1}" at "{2}" GB as "{3}" on Datastore "{4}"' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$ServerDiskType,$_Datastore.Name)
-    #endregion
-
-    #region Create Partion, format and mount
-    Invoke-Command -Session $_session -ScriptBlock {$Disk = Get-Disk | Where-Object {$_.partitionStyle -eq 'RAW'}}
-    Write-Verbose ('{0}: Found Disk in OS...' -f (get-date).tostring())
-    Invoke-Command -Session $_session -ScriptBlock {$Disk | Initialize-Disk}
-    Write-Verbose ('{0}: Initialized Disk...' -f (get-date).tostring())
-    Invoke-Command -Session $_session -ScriptBlock {$Partition = $Disk | New-Partition -UseMaximumSize -AssignDriveLetter}
-    Write-Verbose ('{0}: Created Partition and Temporary Drive Letter...' -f (get-date).tostring())
-    Invoke-Command -Session $_session -ScriptBlock {param ($AllocationUnitSize,$ServerDiskLabel); $Volume = $Partition | Format-Volume -AllocationUnit $AllocationUnitSize -Confirm:$false -NewFileSystemLabel $ServerDiskLabel } -ArgumentList (Invoke-Expression $AllocationUnitSize),$ServerDiskLabel
-    Write-Verbose ('{0}: Formated Partition with Allocation Unit Size: "{1}" and Disk Label of: "{2}"' -f (get-date).tostring(),$AllocationUnitSize,$ServerDiskLabel)
-    
-    
-
-    if ($CleanDiskACL) {
-        Invoke-Command -Session $_session -ScriptBlock {$Acl = Get-Acl ($Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})}
-        Invoke-Command -Session $_session -ScriptBlock {$acl.access | Where-Object {$_.IdentityReference -in ('BUILTIN\Users','CREATOR OWNER')} | ForEach-Object {$acl.RemoveAccessRule($_)} | Out-Null}
-        Invoke-Command -Session $_session -ScriptBlock {$Acl | Set-Acl ($Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})}
-        Write-Verbose ('{0}: Removed Disk Default Permissions for Users and Creator Owner...' -f (get-date).tostring())
-    }
-
-    if ($ServerDiskPath.Split('\')[1]) {
-        Invoke-Command -Session $_session -ScriptBlock {Param($ServerDiskPath);New-Item $ServerDiskPath -ItemType container | Out-Null} -ArgumentList $ServerDiskPath
-        Write-Verbose ('{0}: Created Folder for Mount Point at "{1}"' -f (get-date).tostring(),$ServerDiskPath)
-    } 
-
-    Invoke-Command -Session $_session -ScriptBlock {$Partition | Remove-PartitionAccessPath -AccessPath ($Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})}
-    Write-Verbose ('{0}: Removed Temporary Drive Letter...' -f (get-date).tostring())
-    Invoke-Command -Session $_session -ScriptBlock {Param($ServerDiskPath); $Partition | Add-PartitionAccessPath -AccessPath $ServerDiskPath} -ArgumentList $ServerDiskPath
-    Write-Verbose ('{0}: Mounted Disk/Partition at "{1}"' -f (get-date).tostring(),$ServerDiskPath)
-
-
-    #endregion
-
-    #endregion
-
     <#
     .SYNOPSIS
 
