@@ -2759,3 +2759,181 @@ Function Get-UserProfiles {
     Get-UseerProfiles -ServerName 'Server01'
     #>
 }
+
+function Convert-ToBinary {
+    [CmdletBinding()]
+    Param(
+        # IPAddress to Convert to Binary
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [IPAddress]
+        $IPAddress
+    )
+
+    return (
+        $IPAddress.IPAddressToString.Split('.') | ForEach-Object {
+            [convert]::ToString($_,2).PadLeft(8,'0')
+        }
+    ) -join ''
+
+    <#
+    .SYNOPSIS
+
+    Converts Dotted Decimal IP address to binary
+
+    .DESCRIPTION
+
+    Designed as a helper function to provide the value of the Dotted Decimal 
+
+    .EXAMPLE
+
+    Convert-ToBinary '10.5.3.56'
+
+    .EXAMPLE
+
+    Convert-ToBinary 255.255.255.0
+
+    #>
+}
+
+function Convert-ToDottedDecimal {
+    [CmdletBinding()]
+    Param(
+        # Binary Value to Convert to IP Address (must be 32 characters long 1 or 0 for each character)
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidatePattern('(0|1){32}')]
+        [string]
+        $Binary    
+    )
+    
+    return (
+        (
+            $binary -replace '(........(?!$))','$1;'
+        ).split(';') | foreach-object {
+            [convert]::toint32($_,2)
+        }
+    ) -join '.'
+
+    <#
+    .SYNOPSIS
+
+    Convert 32 Character Binary value to IP Address
+
+    .DESCRIPTION
+
+    Takes Binary Value of IP Address and convert to Dotted Decimal Value
+
+    .EXAMPLE
+
+    Convert-ToDottedDecimal 11111111111111111111111100000000
+
+    RESULT: 255.255.255.0
+
+    .EXAMPLE
+
+    Convert-ToDottedDecimal 00001010000001010000010100001010
+
+    #>
+}
+
+function Get-IPNetworkInfo {
+    [CmdletBinding()]
+    Param(
+        # IP Address to get network info about
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [IPAddress]
+        $IPAddress,
+
+        # Subnet Mask to go with IP
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='Mask'
+        )]
+        [IPAddress]
+        $SubnetMask,
+        
+        # Classless InterDomain Routing Notation
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='CIDR'
+        )]
+        [Int]
+        $CIDR
+    )
+
+    # Get Subnet Mask from CIDR
+    if ($PSCmdlet.ParameterSetName -eq 'CIDR') {
+        $SubnetMask = Convert-ToDottedDecimal ''.PadLeft($cidr,'1').PadRight(32,'0')
+    }
+
+    # Localize Working Values
+    $_IP = $IPAddress.IPAddressToString
+    $_SM = $SubnetMask.IPAddressToString
+
+    # Get Binary Values
+    $_IPBinary = Convert-ToBinary $_IP
+    $_SMBinary = Convert-ToBinary $_SM
+
+    # Get Bit or CIDR value
+    $_Bits = $_SMBinary.IndexOf('0')
+
+    if ($_Bits -eq 32) {
+        Write-Error ('not a network @ /32') -ErrorAction Stop
+    }
+
+    if ($_SMBinary.Substring($_Bits).Contains('1')) {
+        Write-Error ('Invalid Subnet') -ErrorAction Stop
+    }
+
+    # Return IP Network Info
+    return [PSCustomObject]@{
+        IPAddress = $IPAddress;
+        SubnetMask = $SubnetMask;
+        CIDR = $_Bits;
+        IPAddressBinary = $_IPBinary;
+        SubnetMastBinary = $_SMBinary;
+        NetworkStartAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'0') + 1);
+        NetworkEndAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'1') + 0);
+        NetworkBroadcastAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(32,'0'))
+    }
+
+    <#
+    .SYNOPSIS
+
+    Get Network Information From IP Address and Subnet Mask or IP Address and CIDR Notation
+
+    .DESCRIPTION
+
+    Calculate the values for IP Network Information based on IP Address and Subnet Mask or CIDR
+
+    Function Returns the following Values:
+
+        IPAddress
+        SubnetMask
+        CIDR
+        IPAddressBinary
+        SubnetMaskBinary
+        NetworkStartAddress
+        NetworkEndAddress
+        NetworkBroadcastAddress
+
+    .EXAMPLE
+
+    Get-IPNetworkINfo -IPAddress 10.5.98.3 -SubnetMask 255.255.255.0
+
+    .EXAMPLE
+
+    Get-IPNetworkInfo -IPAddress 10.5.98.3 -CIDR 22
+
+    #>
+}
