@@ -30,17 +30,17 @@ function Test-PSRemoting {
     }
     #endregion
 
-    if ($_Session) {
-        If ($Quiet) {
-            return $true
-        }
-        return $_Session
-    } else {
-        if ($Quiet) {
+    if ($Quiet) {
+        if ($_Session) {
+            return $True
+        } else {
             return $false
         }
-        return $null
+
+        $_Session | Remove-PSSession -ErrorAction SilentlyContinue -Verbose:$false
     }
+    
+    return $_Session
 
     <#
     .SYNOPSIS
@@ -2993,111 +2993,131 @@ function Set-SQLMaintenanceJobs {
 
     $_Overlapping = $_SelectedJobs | Where-Object {$_.fullname -in $_ExistingJobs.Name}
 
-    if (-Not $UpdateExisting -and -Not $IgnoreExisting -and $_Overlapping) {
-        Write-Error ('The Jobs "{0}" already exist on Server, Try UpdateExisting or IgnoreExisting' -f ($_Overlapping.FullName -join ','))
-    }
+    if ($_Overlapping) {
+        if ($IgnoreExisting) {
+            $_SelectedJobs = $_SelectedJobs | Where-Object {$_.ShortName -notin $_Overlapping.ShortName}
 
-    if ($IgnoreExisting) {
-        $_SelectedJobs = $_SelectedJobs | Where-Object {$_.ShortName -notin $_Overlapping.ShortName}
-        Write-Verbose ('{0}: Existing Jobs "{1}" will be ignored' -f (get-date).ToString(),($_SelectedJobs | Where-Object {$_.ShortName -in $_Overlapping.ShortName}).ShortName)
+            Write-Verbose ('{0}: Existing Jobs [{1}] will be Skipped' -f (get-Date).ToString(),($_Overlapping.ShortName -join ','))
+        } else {
+            if (-Not $UpdateExisting) {
+                Write-Error ('PROBLEM: Selected Jobs [{0}] already exist, you may need to use UpdateExisting or IgnoreExisting' -f ($_Overlapping.ShortName -join ',')) -ErrorAction Stop
+            }
+        }
     }
-
-    Write-Verbose ('{0}: Jobs "{1}" to be installed/updated on server' -f (get-date).ToString(),($Jobs -join ','))
+    
+    Write-Verbose ('{0}: Creating/Updating Jobs [{1}] !' -f (get-date).ToString(),($Jobs -join ','))
     #endregion
 
     foreach ($_job in $_SelectedJobs) {
         # Get Code for Job from URL
-        $_code = (Invoke-WebRequest -Uri $_Job.CodeUrl -Verbose:$false).Content.split([char]10) -join ([char]13 + [char]10)
-        Write-Verbose ('{0}: Downloaded Code for Job "{1}" from "{2}"' -f (get-date).tostring(),$_job.FullName,$_job.CodeURL)
+        $_code = (
+            Invoke-WebRequest `
+                -Uri $_Job.CodeUrl `
+                -Verbose:$false `
+                -ErrorAction SilentlyContinue
+        ).Content.split([char]10) -join ([char]13 + [char]10)
 
-        if ($UpdateExisting -and $_Job.ShortName -in $_Overlapping.ShortName) {
-            if ($_Job.ShortName -ne 'Schedule') {
-                Invoke-Command -Session $_Session -ScriptBlock {
-                    $JobStep = $SQL.JobServer.Jobs["$($using:_job.FullName)"].JobStep[0]
-                    $JobStep.Command = "$using:_code"
-                    $JobStep.Alter()
-                }
-            } else {
-                Invoke-Command -Session $_Session -ScriptBlock {
-                    foreach ($_Step in $SQL.JobServer.Jobs["SQL Maintenance"].JobSteps) {
-                        $_Step.Command = "$using:_code"
-                        $_step.Alter()
-                    }
-                }
-            }
-        } else {
+        if (-Not $_code) {
+            Write-Error ('PROBLEM: Unable to retrieve Code for Job [{0}] at [{1}]' -f $_job.ShortName,$_job.CodeURL) -ErrorAction Stop
+        }
+
+        Write-Verbose ('{0}: DOWNLOADED - Code for Job "{1}" from "{2}"' -f (get-date).tostring(),$_job.FullName,$_job.CodeURL)
+
+        if ($_Job.FullName -notin $_ExistingJobs.Name) {
+            # Create Job
             Invoke-Command -Session $_Session -ScriptBlock {
-                # Create Job
-                $job = New-Object Microsoft.SqlServer.Management.Smo.Agent.Job
-                $job.Parent = $SQL.JobServer
-                $job.Name = $using:_Job.FullName
-                $job.Create()
-    
-                # Configure Job
-                $job.EmailLevel = 'OnFailure'
-                if ($SQL.Jobserver.Operators["$using:OperatorName"]) {
-                    $job.OperatorToEmail = $using:OperatorName
+                $_NewJob = New-Object Microsoft.SqlServer.Management.Smo.Agent.Job
+                $_NewJob.Parent = $SQL.JobServer
+                $_NewJob.Name = ($using:_Job).FullName
+                $_NewJob.Create()
+
+                $_NewJob.EmailLevel = 'OnFailure'
+                if ($using:OperatorName -and ($SQL.Jobserver.Operators | where-object {$_.Name -eq "$using:OperatorName"})) {
+                    $_NewJob.OperatorToEmail = $using:OperatorName
                 }
-                $job.IsEnabled = $true
-                $job.OwnerLoginName = 'sa'
-                $job.StartStepID = '1'
-                $targetServer = $SQL.NetName
-                if ($sql.InstanceName){
-                    $targetServer += "\"+$SQL.InstanceName
+                $_NewJob.OwnerLoginName = 'sa'
+                $_NewJob.StartStepID = '1'
+                $_targetServer = $SQL.NetName
+                if ($sql.InstanceName) {
+                    $_targetServer += "\" + $SQL.InstanceName
                 }
-                $job.ApplyToTargetServer($targetServer)
-                $job.Alter()
-                
-                # Define Steps
-                if ($using:_Job.ShortName -eq 'Schedule') {
-                    $_Jobs = ('SQL Maintenance - DB Check','SQL Maintenance - Fix File Sizes','SQL Maintenance - Indexes','SQL Maintenance - Full Backup','SQL Maintenance - Log Backup')
+                $_NewJob.ApplyToTargetServer($_targetServer)
+                $_NewJob.Alter()
+            } -ErrorAction Stop
+
+            Write-Verbose ('{0}: CREATED - Job [{1}]' -f (get-date).tostring(),$_job.FullName)
+        } else {
+            # Get Existing Job and Clear All Steps
+            Invoke-Command -Session $_Session -Scriptblock {
+                $_NewJob = $SQL.JobServer.Jobs["$($using:_Job.FullName)"]
+                $_NewJob.RemoveAllJobSteps()
+                $_NewJob.Alter()
+            } -ErrorAction Stop
+
+            Write-Verbose ('{0}: CLEARED - Job Steps for Job [{1}]' -f (Get-Date).ToString(),$_job.FullName)
+        }
+
+        # Define Job Steps
+        if ($_job.ShortName -eq 'Schedule') {
+            $_Steps = ('SQL Maintenance - DB Check','SQL Maintenance - Indexes','SQL Maintenance - Full Backup','SQL Maintenance - Log Backup')
+        } else {
+            $_Steps = $_job.fullname
+        }
+
+        # Create Step(s) for Job to Execute
+        foreach ($_Step in $_Steps) {
+            Invoke-Command -Session $_Session -ScriptBlock {
+                $_jobStep = New-Object Microsoft.SqlServer.Management.Smo.Agent.JobStep
+                $_jobStep.Parent = $_NewJob
+                $_jobStep.Name = ("Exec - " + ($using:_Step).Split('-')[1].trim())
+                $_jobStep.DatabaseName = 'master'
+                $_jobstep.OnFailAction = 'QuitWithFailure'
+                if (($using:_Steps).Count -gt 1) {
+                    if (($using:_Steps).IndexOf("$using:_Step") -ne 3) {
+                        $_jobStep.OnSuccessAction = 'Gotonextstep'
+                    } else {
+                        $_jobStep.OnSuccessAction = 'QuitWithSuccess'
+                    }
+                    $_jobStep.Command = ($using:_code).Replace('{0}',"'$using:_Step'")
                 } else {
-                    $_Jobs = $using:_Job.FullName
+                    $_jobStep.Command = "$using:_code"
+                    $_jobStep.OnSuccessAction = 'QuitWithSuccess'
                 }
+                $_jobstep.SubSystem = 'PowerShell'
+                $_jobstep.JobStepFlags = 'AppendAllCmdExecOutputToJobHistory'
+                $_jobstep.Create()
+            } -ErrorAction Stop
 
-                foreach ($_j in $_Jobs) {
-                    if ($SQL.JobServer.Jobs["$_j"]) {
-                        $jobStep = New-Object Microsoft.SqlServer.Management.Smo.Agent.JobStep
-                        $jobStep.Parent = $job
-                        $jobStep.Name = ("Exec - " + $_J.Split('-')[1].trim())
-                        $jobStep.DatabaseName = 'master'
-                        $jobstep.OnFailAction = 'QuitWithFailure'
-                        if ($_j -eq 'SQL Maintenance') {
-                            $jobStep.OnSuccessAction = 'Gotonextstep'
-                            $_code = $_code.Replace('{0}',"'$_j'")
-                        } else {
-                            $jobStep.OnSuccessAction = 'QuitWithSuccess'
-                        }
-                        $jobstep.SubSystem = 'PowerShell'
-                        $jobstep.JobStepFlags = 'AppendAllCmdExecOutputToJobHistory'
-                        $jobStep.Command = "$using:_code"
-                        $jobstep.Create()
-                    } else {
-                        Write-Warning ('Job "{0}" was not found to be added as job step' -f $_j)
-                    }
-                }
-                
-                # Create or Assign Schedule to execute job
-                if ($_Jobs.Count -gt 1) {
-                    if (-Not ($SQL.JobServer.SharedSchedules["$using:jobfrequency - $using:JobStartTime"])) {
-                        $jsch = new-object Microsoft.SqlServer.Management.Smo.Agent.JobSchedule
-                        $jsch.Parent = $job
-                        $jsch.Name = "$using:jobFrequency - $using:JobStartTime"
-                        $jsch.Create()
-    
-                        $jsch.FrequencyInterval = 1
-                        $jsch.ActiveStartTimeOfDay = $using:jobStartTime
-                        $jsch.FrequencySubDayTypes = 'Once'
-                        $jsch.FrequencyTypes = $using:jobFrequency
-                        $jsch.IsEnabled = $true
-                        $jsch.alter()
-                    } else {
-                        $Job.AddSharedSchedule($sql.JobServer.SharedSchedules["$using:JobFrequency - $using:JobStartTime"].id)
-                    }
-                }
+            Write-Verbose ('{0}: CREATED - Job Step [{1}] assigned to Job [{2}]' -f (get-date).tostring(),('Exec - ' + $_Step.split('-')[1].trim()),$_Job.ShortName)
+        }
+
+        # Create/Assign Schedule
+        if ($_Job.ShortName -eq 'Schedule') {
+            if (-Not (Invoke-command -Session $_Session -ScriptBlock {($SQL.JobServer.SharedSchedules["$using:jobfrequency - $using:jobStartTime"])})) {
+                Invoke-Command -Session $_Session -ScriptBlock {
+                    $_jobSched = New-Object Microsoft.SqlServer.Management.Smo.Agent.JobSchedule
+                    $_jobSched.Parent = $_NewJob
+                    $_jobSched.Name = "$using:jobFrequency - $using:jobStartTime"
+                    $_jobSched.Create()
+
+                    $_jobSched.FrequencyInterval = 1
+                    $_jobSched.ActiveStartTimeOfDay = $using:jobStartTime
+                    $_jobSched.FrequencySubDayTypes = 'Once'
+                    $_jobSched.FrequencyTypes = $using:jobFrequency
+                    $_jobSched.IsEnabled = $true
+                    $_jobSched.alter()
+                } -ErrorAction Stop
+
+                Write-Verbose ('{0}: CREATED - Shared Job Schedule [{1} - {2}]' -f (get-date).tostring(),$jobFrequency,$jobStartTime)
             }
+            
+            if (-Not (Invoke-Command -Session $_Session -ScriptBlock {$_NewJob.HasSchedule})) {
+                Invoke-Command -Session $_Session -ScriptBlock {
+                    $_NewJob.AddSharedSchedule($SQL.JobServer.SharedSchedules["$using:jobfrequency - $using:jobStartTime"].id)
+                } -ErrorAction Stop
 
-            Write-Verbose ('{0}: CREATED - Job with Steps [{1}]' -f (get-date).ToString(),$_job.fullname)
+                Write-Verbose ('{0}: ASSIGNED - Shared Job Schedule [{1} - {2}] to Job [{3}]' -f (get-date).ToString(),$jobFrequency,$jobStartTime,$_job.fullname)
+            }
         }
     }
 }
