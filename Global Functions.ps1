@@ -2897,14 +2897,15 @@ function Get-IPNetworkInfo {
 
     # Return IP Network Info
     return [PSCustomObject]@{
-        IPAddress = $IPAddress;
-        SubnetMask = $SubnetMask;
-        CIDR = $_Bits;
-        IPAddressBinary = $_IPBinary;
-        SubnetMastBinary = $_SMBinary;
-        NetworkStartAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'0') + 1);
-        NetworkEndAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'1') + 0);
-        NetworkBroadcastAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(32,'0'))
+        IPAddress               = $IPAddress;
+        SubnetMask              = $SubnetMask;
+        CIDR                    = $_Bits;
+        IPAddressBinary         = $_IPBinary;
+        SubnetMastBinary        = $_SMBinary;
+        Network                 = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(32,'0'));
+        NetworkStartAddress     = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'0') + 1);
+        NetworkEndAddress       = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(31,'1') + 0);
+        NetworkBroadcastAddress = Convert-ToDottedDecimal ($_IPBinary.Substring(0,$_Bits).PadRight(32,'1'));
     }
 
     <#
