@@ -92,7 +92,7 @@ if ($_dbs) {
                     }
                 }
             } catch {
-                $_Result += ('An error occured removing files for DB "{0}": "{1}"' -f $_db.name,$error[0].Message)
+                $_Result += ('An error occured removing files for DB "{0}": "{1}"' -f $_db.name,$error[0])
                 $_JobSucceded = $false
             }
         }
