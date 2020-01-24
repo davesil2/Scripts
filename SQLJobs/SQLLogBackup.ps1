@@ -83,7 +83,7 @@ if ($_dbs) {
                 # Only perform Cleanup if $_DaysBack has a value and is Less than 0
                 if ($_DaysBack -and $_DaysBack -lt 0) {
                     $_Result += ('Removing Files Older than "{0}" for DB "{1}" from "{2}"' -f $_DaysBack, $_db.name,$_backupDir)
-                    $_files = Get-ChildItem -Path $_backupDir -Filter ('{0}*.{1}' -f $_db.name,$_Extension) | Where-Object {$_.LastWriteTime -lt (get-date).AddDays($_DaysBack)}
+                    $_files = Get-ChildItem -Path $_backupDir | Where-Object {$_.Name -like ('{0}*.{1}' -f $_db.name,$_Extension) -and $_.LastWriteTime -lt (get-date).AddDays($_DaysBack)}
                     if ($_files.Count -gt 0) {
                         foreach ($_file in $_files) {
                             $_Result += ('Removing file "{0}" for DB "{1}"' -f $_file.fullname, $_db.name)
