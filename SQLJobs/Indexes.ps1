@@ -19,7 +19,7 @@ try {
     $_Result += ('Getting Databases from [{0}]' -f $_Instance)
     $_dbs = Get-ChildItem ("SQLSERVER:\SQL\$_instance\Databases") -Force | Where-Object {$_.Status -eq 'Normal' -and $_.Name -ne 'TempDB' -and $_.name -ne 'Model'}
 } catch {
-    $_Result +=  ('Error getting databases from server: {0}' -f $error[0].message)
+    $_Result +=  ('Error getting databases from server: {0}' -f $error[0])
     $_JobSucceded = $false
 }
 
@@ -51,9 +51,9 @@ foreach ($_db in $_dbs) {
                         $_index.ReorganizeAllIndexes()
                         $_index.Alter()
 
-                        $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2]} - Reorganize Success!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
+                        $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Reorganize Success!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
                     } catch {
-                        $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2]} - Reorganize Failed!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
+                        $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Reorganize Failed!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
                         $_JobSucceded = $false
                     }
                 } else {
