@@ -22,114 +22,224 @@
 
 #>
 
+# Add Helper Functions
+Invoke-Expression (
+    (
+        Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/davesil2/Scripts/master/Global%20Functions.ps1'
+    ).content -join [environment]::newline
+)
+
 function New-VMfromTemplate {
     [CmdletBinding()]
     param(
         # vCenter Server Fully Qualified Domain Name
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterServer')]
         [string]
         $vCenterFQDN,
 
         # Credentials to connect to vCenter
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterCredential')]
         [PSCredential]
         $vCenterCreds,
 
         # Cluster or Host to create VM on
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Cluster','ClusterName')]
         [string]
         $vCenterCluster,
 
         # Folder under VM and Template to create VM
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Folder')]
         [string]
         $vCenterFolder,
 
         # Name of vCenter Template
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Template')]
         [string]
         $vCenterTemplate,
 
         # Datastore or Datastore cluster to create VM on
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('DataStore','vCenterDataStoreCluster','DataStoreCluster')]
         [string]
         $vCenterDataStore,
 
         # Port Group Name to assign to VM (Default is is the CIDR notation + *)
-        [parameter(Mandatory=$false)]
-        [ValidateNotNullorEmpty()]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('PortGroup')]
         [string]
-        $vCenterPortGroup = (($ServerIPAddressCIDR.split('.')[0..2] -join '.') + '.0*'),
+        $vCenterPortGroup,
 
         # Customization Spec to use for VM
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('CustomizationSpec')]
         [string]
         $vCenterCustomizationSpec,
 
         # Allocation of Space Type to use on Datastore (thick or thin)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateSet('Thin','Thick')]
         [ValidateNotNullorEmpty()]
         [string]
         $vCenterDiskType = 'Thin',
 
         # Name of Server and VM to create
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','Name','HostName','cn','Server')]
         [ValidateLength(3,15)]
         [string]
         $ServerName,
 
         # vCenter Attribute to assign for Server Purpose (goes to notes if attribute doesn't exist)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Purpose')]
         [string]
         $ServerPurpose,
 
         # vCenter Attribute to assign for Server Team Owner (goes to notes if attribute doesn't exist)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('TeamOwner')]
         [string]
         $ServerTeamOwner,
 
         # IP Address to assign to Server in CIDR Notation (x.x.x.x/x)
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='CIDR'
+        )]
+        [Alias('CIDR')]
         [string]
         $ServerIPAddressCIDR,
 
-        # Subnet for IP address (calculated by CIDR Notation)
-        [ValidateNotNullorEmpty()]
+        # IP Address
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='IP'
+        )]
+        [Alias('IP','IPAddress')]
         [string]
-        $ServerIPSubnet = (''.PadLeft(($ServerIPAddressCIDR.split('/')[1]),'1') + ''.PadRight((32 - ($ServerIPAddressCIDR.Split('/')[1])),'0') | ForEach-Object {('{0}.{1}.{2}.{3}' -f [convert]::ToInt32($_.Substring(0,8),2),[convert]::ToInt32($_.Substring(8,8),2),[convert]::ToInt32($_.Substring(16,8),2),[convert]::ToInt32($_.Substring(24,8),2))}),
+        $ServerIPAddress,
+
+        # Subnet for IP address (calculated by CIDR Notation)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='CIDR'
+        )]
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true,
+            ParameterSetName='IP'
+        )]
+        [Alias('Subnet')]
+        [string]
+        $ServerIPSubnet,
 
         # Calculated by CIDR Notation assuming .1
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateNotNullorEmpty()]
+        [Alias('Gateway')]
         [string]
-        $ServerIPGateway = (([ipaddress]::new(([ipaddress]::parse($ServerIPAddressCIDR.split('/')[0]).address -band [ipaddress]::parse($ServerIPAddressCIDR.split('/')[0]).address)).ipaddresstostring.split('.')[0..2] -join '.') + '.1'),
+        $ServerIPGateway,
 
         # DNS Servers to Assign to Server (get's local client DNS Servers by default)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateNotNullorEmpty()]
         [string[]]
         $ServerDNSServers = ((Get-WmiObject win32_networkadapterconfiguration | Where-Object{$_.ipaddress -and $_.servicename -notlike 'msloop'}).dnsserversearchorder),
 
         # Number of CPU's to assign to VM (default = 2)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateNotNullorEmpty()]
+        [Alias('CPUCount','NumCPU')]
         [int]
         $ServerNumberofCPUs = 2,
 
         # Server Memory in GB to Assign to VM (default = 4)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateNotNullorEmpty()]
+        [Alias('Memory')]
         [int]
         $ServerMemoryGB = 4,
 
         # Option to start VM after it's created (default = true)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $StartVMAfterCreation = $true,
 
         # Attributes written to VM Notes Field when attributes do not exist (default = true)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $AttributestoNotesWhenMissing = $true,
 
         # Show the Configuration Summary when creating VM (default = true)
-        [boolean]
-        $ShowConfigurationSummary = $true
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Switch]
+        $ShowConfigurationSummary
     )
-
-    $ErrorActionPreference = 'Stop'
 
     #region Validate Input from Function
     #region vCenter Validation
@@ -213,24 +323,6 @@ function New-VMfromTemplate {
     Write-Verbose ('{0}: VALIDATED - Template "{1}" found on vCenter "{2}"' -f (get-date).ToString(),$_Template.Name,$_vCenter.Name)
     #endregion
 
-    #region Switch Portgroup Validation
-    if ($_VMHost.GetType().name -notlike '*host*') {
-        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VMHost -Verbose:$false | Select-Object -First 1 | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
-    } else {
-        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
-    }
-    if ($PortGroups) {
-        $_PortGroup = $PortGroups | Where-Object {$_.name -like $vCenterPortGroup}
-    }
-    if (-Not $_PortGroup) {
-        Write-Error ('No matching port groups found') -ErrorAction Stop
-    }
-    if ($_PortGroup.Count -ne 1) {
-        Write-Error ('More than one port group found!') -ErrorAction Stop
-    }
-    Write-Verbose ('{0}: VALIDATED - Porgroup "{1}" found on vCenter "{2}"' -f (get-date).ToString(),$_PortGroup.Name,$_vCenter.Name)
-    #endregion
-
     #region VM Folder Validation
     if ($vCenterFolder) {
         $_VMFolder = VMware.VimAutomation.Core\Get-Folder $vCenterFolder -Verbose:$false -ErrorAction SilentlyContinue
@@ -279,14 +371,26 @@ function New-VMfromTemplate {
     #endregion
 
     #region IP Address Validation
-    $_IPAddress = $ServerIPAddressCIDR.split('/')[0]
-    $_IPSubnet = $ServerIPSubnet
-    $_IPGateway = $ServerIPGateway
+    if ($ServerIPAddressCIDR) {
+        $_NetworkInfo = Get-IPNetworkInfo -IPAddress $ServerIPAddressCIDR.Split('/')[0] -CIDR $ServerIPAddressCIDR.Split('/')[1]
+    } else {
+        $_NetworkInfo = Get-IPNetworkInfo -IPAddress $ServerIPAddress -SubnetMask $ServerIPSubnet
+    }
+    $_IPAddress = $_NetworkInfo.IPAddress
+    $_IPSubnet = $_NetworkInfo.SubnetMask
+    if (-Not $ServerIPGateway) {
+        $_IPGateway = $_NetworkInfo.NetworkStartAddress
+    } else {
+        $_IPGateway = $ServerIPGateway
+    }
 
+    # Verify IP is not Pingable
     if ((New-Object system.net.networkinformation.ping).send($_IPAddress).Status -eq 'Success') {
         Write-Error ('IP address is responding to Ping already') -ErrorAction Stop
     }
+
     try {
+        # Verify IP Doesn't resolve in reverse lookup
         $result = $null
         $result = [net.dns]::GetHostByAddress($_IPAddress)
     } catch {}
@@ -296,6 +400,33 @@ function New-VMfromTemplate {
         }
     }
     Write-Verbose ('{0}: VALIDATED - IPAddress "{1}" with subnet "{2}" and gateway "{3}" ready to use for server "{4}"' -f (get-date).ToString(),$_IPAddress,$_IPSubnet,$_IPGateway,$ServerName)
+    #endregion
+
+    #region Switch Portgroup Validation
+    if (-Not $vCenterPortGroup) {
+        $vCenterPortGroup = ($_NetworkInfo.Network + '*')
+    }
+    # Get Portgroups
+    if ($_VMHost.GetType().name -notlike '*host*') {
+        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VMHost -Verbose:$false | Select-Object -First 1 | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
+    } else {
+        $PortGroups = $_VMHost | VMware.VimAutomation.Core\Get-VirtualPortGroup -Verbose:$false
+    }
+
+    # Find Portgroup in vCenter that matches IP network
+    if ($PortGroups) {
+        $_PortGroup = $PortGroups | Where-Object {$_.name -like $vCenterPortGroup}
+    }
+
+    if (-Not $_PortGroup) {
+        Write-Error ('No matching port groups found') -ErrorAction Stop
+    }
+
+    if ($_PortGroup.Count -ne 1) {
+        Write-Error ('More than one port group found!') -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Porgroup "{1}" found on vCenter "{2}"' -f (get-date).ToString(),$_PortGroup.Name,$_vCenter.Name)
     #endregion
 
     #region Datastore Usage Validation
@@ -321,53 +452,91 @@ function New-VMfromTemplate {
     #region Summarize and Create VM
 
     #region Summarize Configuration
-    $SummaryTable = @()
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Server';OriginalValue=$vCenterFQDN;ValidatedValue=$vCenterFQDN}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Credentials';OriginalValue=$vCenterCreds.UserName;ValidatedValue=$vCenterCreds.UserName}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Cluster/Host';OriginalValue=$vCenterCluster;ValidatedValue=$_VMHost}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Folder Placement';OriginalValue=$vCenterFolder;ValidatedValue=$_VMFolder}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Template';OriginalValue=$vCenterTemplate;ValidatedValue=$_Template}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter DataStore/Cluster';OriginalValue=$vCenterDataStore;ValidatedValue=$_Datastore}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Port Group';OriginalValue=$vCenterPortGroup;ValidatedValue=$_PortGroup}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Customization Spec';OriginalValue=$vCenterCustomizationSpec;ValidatedValue=$_CustomizationSpec}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='vCenter Datastore Disk Type ';OriginalValue=$vCenterDiskType;ValidatedValue=$vCenterDiskType}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server Name';OriginalValue=$ServerName;ValidatedValue=$ServerName}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server Purpose';OriginalValue=$ServerPurpose;ValidatedValue=$ServerPurpose}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server Team Owner';OriginalValue=$ServerTeamOwner;ValidatedValue=$ServerTeamOwner}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server IP Address/CIDR';OriginalValue=$ServerIPAddressCIDR;ValidatedValue=$_IPAddress}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server IP Subnet';OriginalValue=$ServerIPSubnet;ValidatedValue=$_IPSubnet}
-    $SummaryTable += New-Object psobject -Property @{ConfigItem='Server IP Gateway';OriginalValue=$ServerIPGateway;ValidatedValue=$_IPGateway}
-    #$SummaryTable += New-Object psobject -Property @{ConfigItem='Server ';OriginalValue=;ValidatedValue=}
-
+    $SummaryTable = (
+        [pscustomobject]@{ConfigItem='vCenter Server';OriginalValue=$vCenterFQDN;ValidatedValue=$_vCenter.Name;},
+        [pscustomobject]@{ConfigItem='vCenter Credentials';OriginalValue=$vCenterCreds.UserName;ValidatedValue=$_vCenter.User;},
+        [pscustomobject]@{ConfigItem='vCenter Cluster/Host';OriginalValue=$vCenterCluster;ValidatedValue=$_VMHost.Name},
+        [pscustomobject]@{ConfigItem='vCenter Folder Placement';OriginalValue=$vCenterFolder;ValidatedValue=$_VMFolder.Name},
+        [pscustomobject]@{ConfigItem='vCenter Template';OriginalValue=$vCenterTemplate;ValidatedValue=$_Template.Name},
+        [pscustomobject]@{ConfigItem='vCenter DataStore/Cluster';OriginalValue=$vCenterDataStore;ValidatedValue=$_Datastore.Name},
+        [pscustomobject]@{ConfigItem='vCenter Port Group';OriginalValue=$vCenterPortGroup;ValidatedValue=$_PortGroup.Name},
+        [pscustomobject]@{ConfigItem='vCenter Customization Spec';OriginalValue=$vCenterCustomizationSpec;ValidatedValue=$_CustomizationSpec.Name},
+        [pscustomobject]@{ConfigItem='vCenter Datastore Disk Type';OriginalValue=$vCenterDiskType;ValidatedValue=$vCenterDiskType},
+        [pscustomobject]@{ConfigItem='Server Name';OriginalValue=$ServerName;ValidatedValue=$ServerName},
+        [pscustomobject]@{ConfigItem='Server Purpose';OriginalValue=$ServerPurpose;ValidatedValue=$ServerPurpose},
+        [pscustomobject]@{ConfigItem='Server Team Owner';OriginalValue=$ServerTeamOwner;ValidatedValue=$ServerTeamOwner},
+        [pscustomobject]@{ConfigItem='Server IP Address/CIDR';OriginalValue=$ServerIPAddressCIDR;ValidatedValue=$_IPAddress},
+        [pscustomobject]@{ConfigItem='Server IP Subnet';OriginalValue=$ServerIPSubnet;ValidatedValue=$_IPSubnet},
+        [pscustomobject]@{ConfigItem='Server IP Gateway';OriginalValue=$ServerIPGateway;ValidatedValue=$_IPGateway}
+    )
+    
     if ($ShowConfigurationSummary) {
         $SummaryTable | Select-Object ConfigItem,OriginalValue,ValidatedValue
     } else {
-        ($SummaryTable | Select-Object ConfigItem,OriginalValue,ValidatedValue | Out-String).split([environment]::newline) | where-object {$_} | foreach-object {Write-Verbose ("{0}:`t`t{1}" -f (get-date).ToString(),$_)}
+        (
+            $SummaryTable | Select-Object ConfigItem,OriginalValue,ValidatedValue | Out-String
+        ).split([environment]::newline) | where-object {$_} | foreach-object {
+            Write-Verbose ("{0}:`t`t{1}" -f (get-date).ToString(),$_)
+        }
     }
     #endregion
 
     #region Configure Customization Spec
     $_CustomSpecNic = $_CustomizationSpec | VMware.VimAutomation.Core\Get-OSCustomizationNicMapping -Verbose:$false
     if ($_CustomizationSpec.OSType -like '*windows*') {
-        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Dns $ServerDNSServers -Verbose:$false | Out-Null
+        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping `
+            -IpMode UseStaticIP `
+            -IpAddress $_IPAddress `
+            -SubnetMask $_IPSubnet `
+            -DefaultGateway $_IPGateway `
+            -Dns $ServerDNSServers `
+            -Verbose:$false | Out-Null
     } else {
-        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress $_IPAddress -SubnetMask $_IPSubnet -DefaultGateway $_IPGateway -Verbose:$false | Out-Null
+        $_CustomSpecNic | VMware.VimAutomation.Core\Set-OSCustomizationNicMapping `
+            -IpMode UseStaticIP `
+            -IpAddress $_IPAddress `
+            -SubnetMask $_IPSubnet `
+            -DefaultGateway $_IPGateway `
+            -Verbose:$false | Out-Null
     }
-    Write-Verbose ('{0}: Customization Spec "{1}" Updated' -f (get-date).ToString(), $_CustomizationSpec)
+    Write-Verbose ('{0}: Customization Spec [{1}] Configured - (IP Address: [{2}] - Subnet Mask: [{3}] - Gateway: [{4}])' -f (get-date).ToString(), $_CustomizationSpec,$_IPAddress,$_IPSubnet,$_IPGateway)
     #endregion
 
     #region Create VM
     if ($_VMFolder) {
-        VMware.VimAutomation.Core\New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Location $_VMFolder -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+        VMware.VimAutomation.Core\New-VM `
+            -ResourcePool $_VMHost.Name `
+            -Name $ServerName `
+            -Location $_VMFolder `
+            -Template $_Template `
+            -OSCustomizationSpec $_CustomizationSpec `
+            -DiskStorageFormat $vCenterDiskType `
+            -Datastore $_Datastore.Name `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
     } else {
-        VMware.VimAutomation.Core\New-VM -ResourcePool $_VMHost.Name -Name $ServerName -Template $_Template -OSCustomizationSpec $_CustomizationSpec -DiskStorageFormat $vCenterDiskType -Datastore $_Datastore.Name -Verbose:$false
+        VMware.VimAutomation.Core\New-VM `
+            -ResourcePool $_VMHost.Name `
+            -Name $ServerName `
+            -Template $_Template `
+            -OSCustomizationSpec $_CustomizationSpec `
+            -DiskStorageFormat $vCenterDiskType `
+            -Datastore $_Datastore.Name `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
     }
 
-    Write-Verbose ('{0}: VM "{1}" Created!' -f (get-date).ToString(),$ServerName)
+    Write-Verbose ('{0}: VM [{1}] Created!' -f (get-date).ToString(),$ServerName)
 
     $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false
-    $_VM | VMware.VimAutomation.Core\Set-VM -NumCPU $ServerNumberofCPUs -MemoryGB $ServerMemoryGB -Confirm:$false -Verbose:$false | Out-Null
+    $_VM | VMware.VimAutomation.Core\Set-VM `
+        -NumCPU $ServerNumberofCPUs `
+        -MemoryGB $ServerMemoryGB `
+        -Confirm:$false `
+        -Verbose:$false `
+        -ErrorAction SilentlyContinue | Out-Null
     Write-Verbose ('{0}: Updated VM "{1}" CPU to "{2}" and Memory to "{3}"' -f (get-date).ToString(),$_VM.Name,$ServerNumberofCPUs,$ServerMemoryGB)
+    
     $_VM | VMware.VimAutomation.Core\Get-NetworkAdapter -Verbose:$false | VMware.VimAutomation.Core\Set-NetworkAdapter -Portgroup $_PortGroup.Name -Confirm:$false -Verbose:$false | Out-Null
     Write-Verbose ('{0}: Updated VM "{1}" network adapter to port group "{2}"' -f (get-date).ToString(),$_VM.Name,$_PortGroup.Name)
 
@@ -376,7 +545,16 @@ function New-VMfromTemplate {
 
         Write-Verbose ('{0}: VM "{1}" started...' -f (get-date).ToString(),$_VM.Name)
 
-        While (!(VMware.VimAutomation.Core\Get-VIEvent -Entity $_VM -Verbose:$false | Where-Object {$_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'})) {
+        While (
+            -Not (
+                VMware.VimAutomation.Core\Get-VIEvent `
+                    -Entity $_VM `
+                    -Verbose:$false `
+                    -ErrorAction SilentlyContinue | Where-Object {
+                        $_.fullformattedmessage -like '*customization*' -and $_.fullformattedmessage -like '*succeeded*'
+                    }
+                )
+            ) {
             Write-Verbose ("`t`tWaiting for VM Customization to Complete...")
             Start-Sleep 10
         }
@@ -386,36 +564,38 @@ function New-VMfromTemplate {
     
     #region Configure Annotation/Notes for VM
     $_Notes = $_VM.Notes
-    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Created By' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Created By' -Value $_vCenter.User.Split('\')[1] -ErrorAction SilentlyContinue -Verbose:$false
-        Write-Verbose ('{0}: Updated Custom Attribute "Created By" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
-    } else {
-        $_Notes += ("Created By:`t{0}" -f $_vCenter.User.Split('\')[1])
+
+    # Create Array and set Values or notes
+    (
+        [PSCustomObject]@{Attribute = 'Created By';     AttribValue = $_vCenter.User.Split('\') | Select-Object -Last 1;},
+        [PSCustomObject]@{Attribute = 'Created Date';   AttribValue = (get-date).ToString();},
+        [PSCustomObject]@{Attribute = 'Purpose';        AttribValue = $ServerPurpose;},
+        [PSCustomObject]@{Attribute = 'Team Owner';     AttribValue = $ServerTeamOwner;}
+    ) | ForEach-Object {
+        if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute $_.Attribute -ErrorAction SilentlyContinue -Verbose:$false) {
+            $_VM | VMware.VimAutomation.Core\Set-Annotation `
+                -CustomAttribute $_.Attribute `
+                -Value $_.AttribValue `
+                -ErrorAction SilentlyContinue `
+                -Verbose:$false | Out-Null
+
+            Write-Verbose ('{0}: Set Attribute [{1}] to [{2}] - VM: [{3}]' -f (get-date).tostring(),$_.Attribute,$_.AttribValue,$_VM.Name)
+        } else {
+            if ($_notes) {
+                $_Notes += [System.Environment]::NewLine
+            }
+            $_Notes += ("{0}:`t{1}" -f $_.Attribute,$_.AttribValue)
+        }
     }
-    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Created Date' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Created Date' -Value (get-date).ToShortDateString() -Verbose:$false
-        Write-Verbose ('{0}: Updated Custom Attribute "Created Date" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
-    } else {
-        $_Notes += [environment]::newline
-        $_notes += ("Created Date:`t{0}" -f (get-date).ToShortDateString())
-    }
-    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Purpose' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Purpose' -Value $ServerPurpose -Verbose:$false
-        Write-Verbose ('{0}: Updated Custom Attribute "Purpose" on VM "{1}"' -f (get-date).ToString(),$_VM.Name)
-    } else {
-        $_Notes += [environment]::newline
-        $_Notes += ("Purpose:`t{0}" -f $ServerPurpose)
-    }
-    if ($_VM | VMware.VimAutomation.Core\Get-Annotation -CustomAttribute 'Team Owner' -ErrorAction SilentlyContinue -Verbose:$false) {
-        $_VM | VMware.VimAutomation.Core\Set-Annotation -CustomAttribute 'Team Owner' -Value $ServerTeamOwner -Verbose:$false
-        Write-Verbose ('{0}: Updated Custom Attribute "Team Owner" on VM "{1}"' -f (get-date).ToString().$_VM.Name)
-    } else {
-        $_Notes += [environment]::NewLine
-        $_Notes += ("Team Owner:`t{0}" -f $ServerTeamOwner)
-    }
+    
+    # Set Notes if appropriate
     if ($AttributestoNotesWhenMissing) {
-        $_VM | VMware.VimAutomation.Core\Set-VM -Notes $_Notes -Confirm:$false -Verbose:$false | Out-Null
-        Write-Verbose ('{0}: Updated VM "{1}" Notes Field to include Attirbutes not in vCenter' -f (get-date).ToString(),$_VM.Name)
+        $_VM | VMware.VimAutomation.Core\Set-VM `
+            -Notes $_Notes `
+            -Confirm:$false `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue | Out-Null
+        Write-Verbose ('{0}: Updated Notes on VM [{1}]' -f (get-date).ToString(),$_VM.Name)
     }
     #endregion
 
@@ -842,6 +1022,7 @@ function Add-DisktoVM {
             Mandatory=$false,
             ValueFromPipelineByPropertyName=$true
         )]
+        [Alias('DataStore')]
         [ValidateNotNullOrEmpty()]
         [String]
         $vCenterDatastore = '',
@@ -860,7 +1041,7 @@ function Add-DisktoVM {
             Mandatory=$true,
             ValueFromPipelineByPropertyName=$true
         )]
-        [Alias('Size','DiskSize','SizeGB')]
+        [Alias('Size','DiskSize','SizeGB','DiskSizeGB')]
         [int]
         $ServerDiskSizeGB,
         
@@ -879,7 +1060,7 @@ function Add-DisktoVM {
             Mandatory=$false,
             ValueFromPipelineByPropertyName=$true
         )]
-        [Alias('Lable','DiskLabel')]
+        [Alias('Label','DiskLabel')]
         [String]
         $ServerDiskLabel = ('{0} - {1}' -f $ServerDiskPath,$ServerName),
         
@@ -905,6 +1086,12 @@ function Add-DisktoVM {
         #region Validate Variables
 
         #region vCenter Validation
+        if (-Not (Get-Module 'VMware*')) {
+            Import-Module VMware.PowerCLI -Verbose:$false -WarningAction SilentlyContinue -ErrorAction Stop | Out-Null
+
+            Write-Verbose ('{0}: IMPORTED - VMware PowerCLI Imported' -f (get-date).tostring())
+        }
+
         $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
         if (-Not $_vCenter) {
             if ($global:DefaultVIServers.Count -gt 0) {
@@ -932,22 +1119,17 @@ function Add-DisktoVM {
         $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
 
         if (-Not $_VM) {
-            Write-Error ('PROBLEM: VM not found!') -ErrorAction Stop
+            Write-Error ('PROBLEM: VM [{0}] not found!' -f $ServerName) -ErrorAction Stop
         }
 
-        if ($DomainCreds) {
-            $_session = New-PSSession -ComputerName $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
-        } else {
-            $_session = New-PSSession -ComputerName $ServerName -Verbose:$false -ErrorAction SilentlyContinue
-        }
+        $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
         
         if (-Not $_session) {
-            Write-Error ('PROBLEM: Unable to connect to PS Remoting!') -ErrorAction Stop
+            Write-Error ('PROBLEM: Unable to connect to [{0}] Remoting Session!' -f $ServerName) -ErrorAction Stop
         }
 
-
-        if (Invoke-Command -Session $_Session -ScriptBlock {param ($path) Test-Path -Path $Path -ErrorAction SilentlyContinue} -ArgumentList $ServerDiskPath) {
-            Write-Error ('PROBLEM: Path/Drive already exists!') -ErrorAction Stop
+        if (Invoke-Command -Session $_Session -ScriptBlock {Test-Path -Path $using:ServerDiskPath -ErrorAction SilentlyContinue}) {
+            Write-Error ('PROBLEM: Path/Drive [{0}] already exists!' -f $ServerDiskPath) -ErrorAction Stop
         }
 
         Write-Verbose ('{0}: VALIDATED - Ready to Add Disk "{1}" at "{2}" GB to VM "{3}"' -f (get-date).tostring(),$ServerDiskPath,$ServerDiskSizeGB,$_VM.Name)
@@ -957,7 +1139,7 @@ function Add-DisktoVM {
         #region Validate Datastore and Disk Space
         if (-Not $vCenterDataStore) {
             $_Datastore = VMware.VimAutomation.Core\Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
-            Write-Verbose ('{0}: VALIDATED - No Datastore Selected, Using VM "{1}" Default "{2}"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
+            Write-Verbose ('{0}: VALIDATED - No Datastore Selected, Using VM [{1}] Default [{2}]"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
         } else {
             $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
             $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false
@@ -971,9 +1153,9 @@ function Add-DisktoVM {
                 Write-Error ('PROBLEM: No matching datastore found!') -ErrorAction Stop
             }
             if ($_Datastore.Count -ne 1) {
-                Write-Error ('PROBLEM: More than one matching datastore found!') -ErrorAction Stop
+                Write-Error ('PROBLEM: Found [{0}] Datastores [{1}]' -f $_Datastore.Count,($_Datastore.Name -join ',')) -ErrorAction Stop
             }
-            Write-Verbose ('{0}: VALIDATED - Using Datastore: "{1}" for Disk Placement' -f (get-date).tostring(),$_Datastore.Name)
+            Write-Verbose ('{0}: VALIDATED - Using Datastore: [{1}] for Disk Placement' -f (get-date).tostring(),$_Datastore.Name)
         }
         
         $SpaceUsage = 0
@@ -987,9 +1169,9 @@ function Add-DisktoVM {
             Write-Warning ('PROBLEM: Datastore using greater than 80% of datastore!') -ErrorAction Stop
         }
         if (($_datastore.CapacityGB - $_datastore.FreeSpaceGB + $SpaceUsage) -gt ($_datastore.CapacityGB *.95)) {
-            Write-Error ('PROBLEM: Datastore Usage with VM will be greater than 95%!') -ErrorAction Stop
+            Write-Error ('PROBLEM: Datastore Usage [{0}]GB with VM [{1}]GB will be greater than 95%!' -f $_Datastore.CapacityGB,$SpaceUsage) -ErrorAction Stop
         }
-        Write-Verbose ('{0}: VALIDATED - Using Datastore "{1}" which has "{2}" GB Free' -f (get-date).tostring(),$_Datastore.Name,$_Datastore.FreeSpaceGB)
+        Write-Verbose ('{0}: VALIDATED - Using Datastore [{1}] which has [{2}] GB Free' -f (get-date).tostring(),$_Datastore.Name,$_Datastore.FreeSpaceGB)
         #endregion
 
         #endregion
@@ -999,7 +1181,7 @@ function Add-DisktoVM {
         #region Create Disk on VM
         $_VM | VMware.VimAutomation.Core\New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
 
-        Write-Verbose ('{0}: Disk Created (VM Name: [{1}] - Size GB: [{2}] - DataStore: [{3}] - Type: [{4}])' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$_Datastore.Name,$ServerDiskType)
+        Write-Verbose ('{0}: CREATED - New Disk (VM Name: [{1}] - Size GB: [{2}] - DataStore: [{3}] - Type: [{4}])' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$_Datastore.Name,$ServerDiskType)
         #endregion
 
         #region Create Partion, format and mount
@@ -1007,14 +1189,14 @@ function Add-DisktoVM {
             $_Disk = Get-Disk | Where-Object {$_.partitionStyle -eq 'RAW'}
             $_Disk | Initialize-Disk
             $_Partition = $_Disk | New-Partition -UseMaximumSize -AssignDriveLetter
-            $_Partition | Format-Volume -AllocationUnit $using:AllocationUnitSize -Confirm:$false -NewFileSystemLabel $using:ServerDiskLabel
+            $_Partition | Format-Volume -AllocationUnit (invoke-expression $using:AllocationUnitSize) -Confirm:$false -NewFileSystemLabel $using:ServerDiskLabel
         }
 
         if (-Not $_Volume) {
             Write-Error ('PROBLEM: An Error Occured configuring (Path: [{0}] - Label: [{1}])' -f $ServerDiskPath,$ServerDiskLabel)
         }
 
-        Write-Verbose ('{0}: Disk Added - (TempDriveLetter: [{1}] - Label: [{4}])' -f (get-date).tostring(),$_Volume.DriveLetter,$ServerDiskLabel)
+        Write-Verbose ('{0}: CONFIGURED - Disk Added (TempDriveLetter: [{1}] - Label: [{2}])' -f (get-date).tostring(),$_Volume.DriveLetter,$ServerDiskLabel)
 
         # Remove User and Creator Owner ACL's
         if ($CleanDiskACL) {
@@ -1028,7 +1210,7 @@ function Add-DisktoVM {
                 $_ACL | Set-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '\\?\volume*'})
             }
             
-            Write-Verbose ('{0}: Removed Disk Default Permissions for Users and Creator Owner...' -f (get-date).tostring())
+            Write-Verbose ('{0}: REMOVED - Default Permissions for Users and Creator Owner [{1}]' -f (get-date).tostring(),$ServerDiskPath)
         }
 
         # Create Folder if it's a Mount Point
@@ -1037,7 +1219,7 @@ function Add-DisktoVM {
                 New-Item $using:ServerDiskPath -ItemType container | Out-Null
             }
 
-            Write-Verbose ('{0}: Created Folder for Mount Point at "{1}"' -f (get-date).tostring(),$ServerDiskPath)
+            Write-Verbose ('{0}: CREATED - Mount Point Folder [{1}]' -f (get-date).tostring(),$ServerDiskPath)
         } 
 
         # Remove Temporary Drive Letter and Add mounting path
@@ -1046,13 +1228,13 @@ function Add-DisktoVM {
             $_Partition | Add-PartitionAccessPath -AccessPath $using:ServerDiskPath
         }
 
-        Write-Verbose ('{0}: Assigned Disk Access path [{1}]' -f $ServerDiskPath)
+        Write-Verbose ('{0}: ASSIGNED - Disk to Path [{1}]' -f $ServerDiskPath)
         #endregion
 
         #endregion
     }
     End {
-        $_session | Remove-PSSession
+        $_session | Remove-PSSession -ErrorAction SilentlyContinue -Verbose:$false -WarningAction SilentlyContinue -Confirm:$false
     }
     <#
     .SYNOPSIS
