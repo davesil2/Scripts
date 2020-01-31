@@ -44,6 +44,9 @@ foreach ($_db in $_dbs) {
                         $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Rebulid Success!' -f $_db.Name,$_index.Name,[int]$_frag.averagefragmentation)
                     } catch {
                         $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Rebulid Failed!' -f $_db.Name,$_index.Name,[int]$_frag.averagefragmentation)
+                        $_result += ''.PadLeft(100,'*')
+                        $_Result += ('*** Error Message: {0}' -f $error[0])
+                        $_result += ''.PadLeft(100,'*')
                         $_JobSucceded = $false
                     }
                 } elseif ($_frag.averagefragmentation -gt $reorganizefragmentationlevel) {
@@ -54,13 +57,12 @@ foreach ($_db in $_dbs) {
                         $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Reorganize Success!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
                     } catch {
                         $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Reorganize Failed!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
+                        $_result += ''.PadLeft(100,'*')
+                        $_Result += ('*** Error Message: {0}' -f $error[0])
+                        $_result += ''.PadLeft(100,'*')
                         $_JobSucceded = $false
                     }
-                } else {
-                    $_Result += ('Database [{0}] : Index [{1}] - Fragmentation [{2}] - Fragmentation Not High enough!' -f $_db.name,$_index.name,[int]$_frag.averagefragmentation)
-                }
-
-                $_index.Refresh()
+                } 
             }
         }
     }
