@@ -1087,7 +1087,11 @@ function Add-DisktoVM {
 
         #region vCenter Validation
         if (-Not (Get-Module 'VMware*')) {
-            Import-Module VMware.PowerCLI -Verbose:$false -WarningAction SilentlyContinue -ErrorAction Stop | Out-Null
+            Import-Module `
+                -Name VMware.PowerCLI `
+                -Verbose:$false `
+                -WarningAction SilentlyContinue `
+                -ErrorAction Stop | Out-Null
 
             Write-Verbose ('{0}: IMPORTED - VMware PowerCLI Imported' -f (get-date).tostring())
         }
@@ -1095,15 +1099,27 @@ function Add-DisktoVM {
         $_vCenter = $global:DefaultVIServers | Where-Object{$_.name -eq $vCenterFQDN -and $_.isconnected -eq 'True'}
         if (-Not $_vCenter) {
             if ($global:DefaultVIServers.Count -gt 0) {
-                VMware.VimAutomation.Core\Disconnect-VIServer -Force -Server * -ErrorAction SilentlyContinue -Confirm:$false -Verbose:$false
+                VMware.VimAutomation.Core\Disconnect-VIServer `
+                    -Force `
+                    -Server * `
+                    -ErrorAction SilentlyContinue `
+                    -Confirm:$false `
+                    -Verbose:$false
 
                 Write-Verbose ('{0}: VALIDATED - Disconnected form Existing vCenters' -f (get-date).tostring())
             }
             try{
                 if ($vCenterCreds) {
-                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Credential $vCenterCreds -Force -Verbose:$false
+                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer `
+                        -Server $vCenterFQDN `
+                        -Credential $vCenterCreds `
+                        -Force `
+                        -Verbose:$false
                 } else {
-                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer -Server $vCenterFQDN -Force -Verbose:$false
+                    $_vCenter = VMware.VimAutomation.Core\Connect-VIServer `
+                        -Server $vCenterFQDN `
+                        -Force `
+                        -Verbose:$false
                 }
             } catch {
                 Write-Error ('PROBLEM: A Problem occured connecting to vCenter!') -ErrorAction Stop
@@ -1116,13 +1132,20 @@ function Add-DisktoVM {
         #endregion
 
         #region Validate VM, OS, and Disk Path
-        $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false -ErrorAction SilentlyContinue
+        $_VM = VMware.VimAutomation.Core\Get-VM `
+            -Name $ServerName `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
 
         if (-Not $_VM) {
             Write-Error ('PROBLEM: VM [{0}] not found!' -f $ServerName) -ErrorAction Stop
         }
 
-        $_Session = Test-PSRemoting -ServerName $ServerName -ServerCreds $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
+        $_Session = Test-PSRemoting `
+            -ServerName $ServerName `
+            -ServerCreds $DomainCreds `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
         
         if (-Not $_session) {
             Write-Error ('PROBLEM: Unable to connect to [{0}] Remoting Session!' -f $ServerName) -ErrorAction Stop
@@ -1138,7 +1161,9 @@ function Add-DisktoVM {
 
         #region Validate Datastore and Disk Space
         if (-Not $vCenterDataStore) {
-            $_Datastore = VMware.VimAutomation.Core\Get-DataStore $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] -Verbose:$false
+            $_Datastore = VMware.VimAutomation.Core\Get-DataStore `
+                -Name $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] `
+                -Verbose:$false
             Write-Verbose ('{0}: VALIDATED - No Datastore Selected, Using VM [{1}] Default [{2}]"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
         } else {
             $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
@@ -1179,18 +1204,29 @@ function Add-DisktoVM {
         #region Create Configure Disk
 
         #region Create Disk on VM
-        $_VM | VMware.VimAutomation.Core\New-HardDisk -StorageFormat $ServerDiskType -CapacityGB $ServerDiskSizeGB -Datastore $_datastore.Name -Verbose:$false | Out-Null
+        $_VM | VMware.VimAutomation.Core\New-HardDisk `
+            -StorageFormat $ServerDiskType `
+            -CapacityGB $ServerDiskSizeGB `
+            -Datastore $_datastore.Name `
+            -Verbose:$false | Out-Null
 
         Write-Verbose ('{0}: CREATED - New Disk (VM Name: [{1}] - Size GB: [{2}] - DataStore: [{3}] - Type: [{4}])' -f (get-date).tostring(),$_VM.Name,$ServerDiskSizeGB,$_Datastore.Name,$ServerDiskType)
         #endregion
 
         #region Create Partion, format and mount
-        $_Volume = Invoke-Command -Session $_session -ScriptBlock {
+        $_Volume = Invoke-Command -ScriptBlock {
             $_Disk = Get-Disk | Where-Object {$_.partitionStyle -eq 'RAW'}
             $_Disk | Initialize-Disk
-            $_Partition = $_Disk | New-Partition -UseMaximumSize -AssignDriveLetter
-            $_Partition | Format-Volume -AllocationUnit (invoke-expression $using:AllocationUnitSize) -Confirm:$false -NewFileSystemLabel $using:ServerDiskLabel
-        }
+
+            $_Partition = $_Disk | New-Partition `
+                -UseMaximumSize `
+                -AssignDriveLetter
+
+            $_Partition | Format-Volume `
+                -AllocationUnit (invoke-expression $using:AllocationUnitSize) `
+                -Confirm:$false `
+                -NewFileSystemLabel $using:ServerDiskLabel
+        } -Session $_Session
 
         if (-Not $_Volume) {
             Write-Error ('PROBLEM: An Error Occured configuring (Path: [{0}] - Label: [{1}])' -f $ServerDiskPath,$ServerDiskLabel)
@@ -1200,7 +1236,7 @@ function Add-DisktoVM {
 
         # Remove User and Creator Owner ACL's
         if ($CleanDiskACL) {
-            Invoke-Command -Session $_Session -ScriptBlock {
+            Invoke-Command -ScriptBlock {
                 $_ACL = Get-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
                 $_ACL.Access | Where-Object {
                     $_.IdentityReference -in ('BUILTIN\Users','CREATOR OWNER')
@@ -1208,25 +1244,30 @@ function Add-DisktoVM {
                     $_ACL.RemoveAccessRule($_) | Out-Null
                 }
                 $_ACL | Set-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '\\?\volume*'})
-            }
+            } -Session $_Session
             
             Write-Verbose ('{0}: REMOVED - Default Permissions for Users and Creator Owner [{1}]' -f (get-date).tostring(),$ServerDiskPath)
         }
 
         # Create Folder if it's a Mount Point
         if ($ServerDiskPath.Split('\')[1]) {
-            Invoke-Command -Session $_session -ScriptBlock {
-                New-Item $using:ServerDiskPath -ItemType container | Out-Null
-            }
+            Invoke-Command -ScriptBlock {
+                New-Item `
+                    -Name $using:ServerDiskPath `
+                    -ItemType container | Out-Null
+            } -Session $_Session
 
             Write-Verbose ('{0}: CREATED - Mount Point Folder [{1}]' -f (get-date).tostring(),$ServerDiskPath)
         } 
 
         # Remove Temporary Drive Letter and Add mounting path
-        Invoke-Command -Session $_session -ScriptBlock {
-            $_Partition | Remove-PartitionAccessPath -AccessPath ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
-            $_Partition | Add-PartitionAccessPath -AccessPath $using:ServerDiskPath
-        }
+        Invoke-Command -ScriptBlock {
+            $_Partition | Remove-PartitionAccessPath `
+                -AccessPath ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
+
+            $_Partition | Add-PartitionAccessPath `
+                -AccessPath $using:ServerDiskPath
+        } -Session $_Session
 
         Write-Verbose ('{0}: ASSIGNED - Disk to Path [{1}]' -f $ServerDiskPath)
         #endregion
@@ -1234,7 +1275,11 @@ function Add-DisktoVM {
         #endregion
     }
     End {
-        $_session | Remove-PSSession -ErrorAction SilentlyContinue -Verbose:$false -WarningAction SilentlyContinue -Confirm:$false
+        $_session | Remove-PSSession `
+            -ErrorAction SilentlyContinue `
+            -Verbose:$false `
+            -WarningAction SilentlyContinue `
+            -Confirm:$false
     }
     <#
     .SYNOPSIS
