@@ -930,10 +930,21 @@ Function Play-Phrase {
         [Parameter(Mandatory=$True)]
         [ValidateNotNullOrEmpty()]
         [String]
-        $Phrase
+        $Phrase,
+
+        [ValidateSet('Female','Male')]
+        $VoiceGender = 'Female'
     )
 
     $_Speaker = New-Object -ComObject SAPI.SpVoice -ErrorAction Stop
+
+    $_Voices = $_Speaker.GetVoices()
+
+    if ($VoiceGender -eq 'Female') {
+        $_Speaker.Voice = $_Voices | Where-Object {$_.id -like '*zira*'}
+    } else {
+        $_Speaker.Voice = $_Voices | Where-Object {$_.id -like '*david*'}
+    }
     [Void]($_Speaker.Speak($Phrase))
 }
 
