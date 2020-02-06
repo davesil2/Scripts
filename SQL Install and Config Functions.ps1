@@ -952,116 +952,170 @@ function New-ADGroupforSQL {
     [CmdletBinding()]
     Param(
         # Name of Group to Create
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Group')]
         [string]
         $GroupName,
 
         # optional credentials to use when creating the group
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Credential','Creds')]
         [pscredential]
         $DomainCreds,
         
         # OU Path to create group in
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('OUPath')]
         [string]
         $GroupOUPath,
 
         # Create or Just update Group Members
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $CreateGroup = $true,
         
         # Users or Groups to add to Group
-        [parameter(Mandatory=$false)]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [string[]]
         $GroupMembers,
         
         # Group Scope Type
-        [parameter(Mandatory=$false)]
+        [parameter(    
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('Scope')]
         [ValidateSet('DomainLocal','Global')]
         [string]
         $GroupScope = 'DomainLocal'
     )
 
-    $ErrorActionPreference = 'Stop'
+    Process {
+        #region Validate Group and OU Path
+        $_Group = Get-ADGroup -Filter "name -eq '$GroupName'" -ErrorAction SilentlyContinue -Verbose:$false
+        $_GroupOUPath = Get-Item "AD:\$GroupOUPath" -ErrorAction SilentlyContinue -Verbose:$false
 
-    #region Validate Group and OU Path
-    $_Group = Get-ADGroup -Filter "name -eq '$GroupName'" -ErrorAction SilentlyContinue -Verbose:$false
-    $_GroupOUPath = Get-Item "AD:\$GroupOUPath" -ErrorAction SilentlyContinue -Verbose:$false
+        if ($CreateGroup) {
+            if ($_Group) {
+                Write-Error ('PROBLEM: AD Group "{0}" already exists' -f $GroupName) -ErrorAction Continue
+                return $null
+            }
 
-    if ($CreateGroup) {
-        if ($_Group) {
-            Write-Error ('AD Group "{0}" already exists' -f $GroupName) -ErrorAction Continue
-            return $null
-        }
+            Write-Verbose ('{0}: VALIDATED - AD Group "{1}" not found, ready to create!' -f (get-date).ToString(),$GroupName)
 
-        Write-Verbose ('{0}: VALIDATED - AD Group "{1}" not found, ready to create!' -f (get-date).ToString(),$GroupName)
+            if (-Not $_GroupOUPath -and ($GroupOUPath)) {
+                Write-Error ('PROBLEM: Group OU Path "{0}" does not exist as expected' -f $GroupOUPath) -ErrorAction Continue
+                return $null
+            }
 
-        if (-Not $_GroupOUPath -and ($GroupOUPath)) {
-            Write-Error ('Group OU Path "{0}" does not exist as expected' -f $GroupOUPath) -ErrorAction Continue
-            return $null
-        }
-
-        Write-Verbose ('{0}: VALIDATED - AD Group OUPath "{1}" exists as expected' -f (get-date).ToString(),$GroupOUPath)
-    } else {
-        if (-Not $_Group) {
-            Write-Error ('AD Group "{0}" does NOT exist!' -f $GroupName) -ErrorAction Continue
-            return $null
-        }
-        if ($_group.Count -gt 1) {
-            Write-Error ('Group Name "{0}" returned "{1}" objects' -f $GroupName,$_group.Count) -ErrorAction Continue
-            return $null
-        }
-
-        Write-Verbose ('{0}: VALIDATED - AD Group "{1}" found!' -f (get-date).ToString(),$GroupName)
-    }
-    #endregion
-
-    #region Create Group
-    if ($CreateGroup) {
-        if ($DomainCreds) {
-            New-ADGroup -Name $GroupName -SamAccountName $GroupName -GroupCategory 'Security' -GroupScope $GroupScope -path $_GroupOUPath.distinguishedname -ErrorAction SilentlyContinue -Credential $DomainCreds
+            Write-Verbose ('{0}: VALIDATED - AD Group OUPath "{1}" exists as expected' -f (get-date).ToString(),$GroupOUPath)
         } else {
-            New-ADGroup -Name $GroupName -SamAccountName $GroupName -GroupCategory 'Security' -GroupScope $GroupScope -path $_GroupOUPath.distinguishedname -ErrorAction SilentlyContinue
+            if (-Not $_Group) {
+                Write-Error ('PROBLEM: AD Group "{0}" does NOT exist!' -f $GroupName) -ErrorAction Continue
+                return $null
+            }
+            if ($_group.Count -gt 1) {
+                Write-Error ('PROBLEM: Group Name "{0}" returned "{1}" objects' -f $GroupName,$_group.Count) -ErrorAction Continue
+                return $null
+            }
+
+            Write-Verbose ('{0}: VALIDATED - AD Group "{1}" found!' -f (get-date).ToString(),$GroupName)
         }
+        #endregion
+
+        #region Impersonate User if Credentials are provided
+        if ($DomainCreds) {
+            $_Token = New-UserIdentityToken -Credentials $DomainCreds
         
-        Start-Sleep -Seconds 5
-        $_Group = Get-ADGroup -Filter "name -like '$GroupName'" -ErrorAction SilentlyContinue -Verbose:$false
+            if (-Not $_Token) {
+                Write-Error ('PROBLEM: Unable to Impersonate Credentials [{0}]' -f $DomainCreds.UserName) -ErrorAction Stop
+            }
 
-        if (-Not ($_Group)) {
-            Write-Error ('A problem occured creating AD Group') -ErrorAction Continue
-            return $null
+            Write-Verbose ('{0}: IMPERSONATION - Token Created for user [{1}]' -f (get-date).tostring(),$DomainCreds.UserName)
+
+            $_Claim = $_Token.Impersonate()
+
+            if (-Not $_Claim) {
+                Write-Error ('PROBLEM: Claim creation failed from Impersonation Token') -ErrorAction Stop
+            }
         }
-        Write-Verbose ('{0}: AD Group "{1}" created' -f (get-date).tostring(),$GroupName)
-    }
-    #endregion
+        #endregion
 
-    #region Add Members to Group
-    if ($GroupMembers -and $_Group) {
-        foreach ($_GroupMember in $GroupMembers) {
-            $_ADobject = Get-ADObject -filter "Name -like '$_GroupMember' -or SamAccountName -like '$_GroupMember'" -ErrorAction SilentlyContinue
+        #region Create Group
+        if ($CreateGroup) {
+            New-ADGroup `
+                -Name $GroupName `
+                -SamAccountName $GroupName `
+                -GroupCategory 'Security' `
+                -GroupScope $GroupScope `
+                -path $_GroupOUPath.distinguishedname `
+                -ErrorAction SilentlyContinue
             
-            if (-Not $_ADobject) {
-                Write-Warning ('ADObject "{0}" not found' -f $_GroupMember)
-            } else {
-                try {
-                    if ($DomainCreds) {
-                        Add-ADGroupMember -Identity $_Group.DistinguishedName -Members $_ADobject.distinguishedname -Credential $DomainCreds
-                    } else {
-                        Add-ADGroupMember -Identity $_Group.DistinguishedName -Members $_ADobject.distinguishedname
-                    }
+            $_Count = 0
+            While (-Not $_Group) {
+                $_Group = Get-ADGroup `
+                    -Filter "name -eq '$GroupName'" `
+                    -ErrorAction SilentlyContinue `
+                    -Verbose:$false
 
-                    Write-Verbose ('{0}: Added AD Object "{1}" to Group "{2}"' -f (get-date).tostring(),$_ADobject.name,$_group.Name)
-                } catch {
-                    Write-Warning ('Adding ADObject "{0}" add to Group "{1}" failed' -f $_ADobject.Name,$_group.Name)
+                Start-Sleep 5
+                Write-Verbose ("`t`t...Waiting for AD Group to Replicate...")
+                $_Count++
+                if ($_Count -gt 60) {
+                    Write-Error ('PROBLEM: Group [{0}] Creation appears to have failed or replication is taking longer than expected' -f $GroupName) -ErrorAction Continue
+                    return $null
+                }
+            }
+            
+            Write-Verbose ('{0}: CREATED - AD Group [{1}]' -f (get-date).tostring(),$GroupName)
+        }
+        #endregion
+
+        #region Add Members to Group
+        if ($GroupMembers -and $_Group) {
+            foreach ($_GroupMember in $GroupMembers) {
+                $_ADobject = Get-ADObject -filter "Name -like '$_GroupMember' -or SamAccountName -like '$_GroupMember'" -ErrorAction SilentlyContinue
+                
+                if (-Not $_ADobject) {
+                    Write-Warning ('SKIPPED - ADObject [{0}] not found' -f $_GroupMember)
+                } else {
+                    try {
+                        Add-ADGroupMember -Identity $_Group.DistinguishedName -Members $_ADobject.distinguishedname
+
+                        Write-Verbose ('{0}: ADDED - AD Object [{1}] to Group [{2}]' -f (get-date).tostring(),$_ADobject.name,$_group.Name)
+                    } catch {
+                        Write-Warning ('SKIPPED - Adding ADObject [{0}] add to Group [{1}] failed' -f $_ADobject.Name,$_group.Name)
+                    }
                 }
             }
         }
+        #endregion
+
+        return $_Group
     }
-    #endregion
-
-    return $_Group
-
+    End {
+        # Cleanup tokens for user impersonation
+        if ($_Claim) {
+            try {$_Claim.Undo()} catch {}
+            try {$_Claim.dispose()} catch {}
+            try {$_Token.Dispose()} catch {}
+        }
+    }
     <#
     .SYNOPSIS
 
@@ -1076,6 +1130,10 @@ function New-ADGroupforSQL {
         Optional: Add Members
 
         Required: OU Path to create
+
+    .EXAMPLE
+
+    New-ADGroupforSQL
     #>
 }
 
