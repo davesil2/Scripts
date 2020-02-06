@@ -676,81 +676,142 @@ function Add-VMtoDomain {
     [CmdletBinding()]
     param(
         #Fully Qualified Domain Name of vCenter Server where server exists
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterServer')]
         [string]
         $vCenterFQDN,
         
         #Credentials to access vCenter (not required but will use current user)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterCredential')]
         [pscredential]
         $vCenterCreds,
         
         #Domain Credentials that allow joining domain and access via WSMAN after Joining domain
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('vCenterCredential')]
         [pscredential]
         $DomainCreds,
         
         #Name of Server to Join to AD
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ComputerName','Name','HostName','cn','Server')]
         [string]
         $ServerName,
         
         #Credentials to access OS before Joining domain
-        [parameter(Mandatory=$true)]
+        [parameter(
+            Mandatory=$true,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ServerCredential','OSCredential','ServerCreds')]
         [pscredential]
         $ServerOSCreds,
         
         #Operating System of Server being joined
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [ValidateSet('Windows','Linux')]
         [string]
         $ServerOSType = 'Windows',
 
         #Domain to join machine to
-        [parameter(Mandatory=$false)]
-        [ValidateNotNull()]
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string]
         $ADDomainName = (Get-ADDomain).DNSRoot,
 
         #Enables creation of AD Admin Group(s)
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $ConfigureADAdminGroup = $true,
         
         #OU Path for Joining computer to domain (ie. OU=somefolder,DC=domain,DC=com)
-        [parameter(Mandatory=$false)]
-        [ValidateNotNull()]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string]
         $ADServerOUPath = ('OU=Prod,OU=Servers,{0}' -f (Get-ADDomain).DistinguishedName),
 
         #Admin Group Name that will be created in AD
-        [parameter(Mandatory=$false)]
-        [ValidateNotNull()]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string]
         $ADGroupAdminName = (& {if ($ServerOSType -eq 'Windows') {('Local_{0}_Administrators' -f $servername)} else {('Local_{0}_Sudo' -f $servername)}}),
 
         #SSH Group Name to limit SSH access that will be created in AD (linux only)
-        [parameter(Mandatory=$false)]
-        [ValidateNotNull()]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string]
         $ADGroupSSHName = ('Local_{0}_SSH' -f $ServerName),
 
         #Users and Groups to add to AD Admin Group
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string[]]
         $ADGroupAdminMembers,
 
         #OU Path to Create AD Groups for Server
-        [parameter(Mandatory=$false)]
-        [ValidateNotNull()]
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [ValidateNotNullOrEmpty()]
         [string]
         $ADGroupOUPath = ('OU=Server Groups,OU=EnteriseAdmin,{0}' -f (Get-ADDomain).DistinguishedName),
 
         #Enable Delegation for computer in AD
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $TrustComputerforDelegation = $true,
         
         #Ensure PSRemoting/WSMAN is enabled
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $EnableWSMAN = $true,
         
         #Match the OS Network Adapter Name to vCenter PortGroup Name
+        [Parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
         [boolean]
         $UpdateOSNICtoPortGroupName = $true
 
@@ -789,25 +850,36 @@ function Add-VMtoDomain {
     if (Get-ADComputer -filter {name -like $servername} -ErrorAction SilentlyContinue -Verbose:$false) {
         Write-Error ('Server AD Computer Object already exists!') -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - Server "{1}" Not Found in AD' -f (get-date).tostring(),$ServerName)
+
+    Write-Verbose ('{0}: VALIDATED - Computer Object [{1}] Ready to Be Created' -f (get-date).tostring(),$ServerName)
     if (-Not $_VM) {
-        Write-Error ('Server Name not found in VMware!') -ErrorAction Stop
+        Write-Error ('Server Name [{0}] not found in VMware!' -f $ServerName) -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - VM "{1}" Located in vCenter "{2}"' -f (get-date).tostring(),$ServerName,$_vCenter.Name)
+    
+    Write-Verbose ('{0}: VALIDATED - VM [{1}] Located in vCenter [{2}]' -f (get-date).tostring(),$ServerName,$_vCenter.Name)
     if ($ServerOSType -eq 'Windows') {
-        $Script = ('ping {0} -n 1' -f $ADDomainName)
-        $Result = VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -Verbose:$false
-        if ($result -notlike '*Lost = 0*') {
-            Write-Error ('domain not available on VM, check network') -ErrorAction Stop
-        }
+        $_Result = VMware.VimAutomation.Core\Invoke-VMScript `
+            -VM $_VM `
+            -ScriptText ('ping {0} -n 1' -f $ADDomainName) `
+            -GuestCredential $ServerOSCreds `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
+        
     } else {
-        $Script = ('Ping {0} -c 1' -f $ADDomainName)
-        $Result = VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $Script -GuestCredential $ServerOSCreds -ScriptType bash -Verbose:$false
-        if ($result -notlike '*0% packet loss*') {
-            Write-Error ('domain not available on VM, Check network!') -ErrorAction Stop
-        }
+        $_Result = VMware.VimAutomation.Core\Invoke-VMScript `
+            -VM $_VM `
+            -ScriptText ('Ping {0} -c 1' -f $ADDomainName) `
+            -GuestCredential $ServerOSCreds `
+            -ScriptType bash `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
     }
-    Write-Verbose ('{0}: VALIDATED - Server "{1}" OS can ping domain "{2}"' -f (get-date).tostring(),$_VM.Name,$ADDomainName)
+
+    if ($_Result -notlike '*Lost = 0*') {
+        Write-Error ('Domain [{0}] not available on VM, check network' -f $ADDomainName) -ErrorAction Stop
+    }
+
+    Write-Verbose ('{0}: VALIDATED - Domain [{1}] is pingable from VM [{2}]' -f (get-date).tostring(),$ADDomainName,$_VM.Name)
     #endregion
 
     #region Server and Group OUPath Validation
@@ -815,46 +887,71 @@ function Add-VMtoDomain {
     $_GroupOUPath = Get-Item "AD:\$ADGroupOUPath" -ErrorAction SilentlyContinue -Verbose:$false
 
     if (-Not $_ServerOUPath) {
-        Write-Error ('Server OU Path not found!') -ErrorAction Stop
+        Write-Error ('Server OU [{0}] Path not found!' -f $ADServerOUPath) -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - Server OU Path "{1}"' -f (get-date).tostring(),$_ServerOUPath.distinguishedName)
+    Write-Verbose ('{0}: VALIDATED - Server OU Path [{1}]' -f (get-date).tostring(),$_ServerOUPath.distinguishedName)
+
     if (-Not $_GroupOUPath) {
-        Write-Error ('Group OU Path Not Found!') -ErrorAction Stop
+        Write-Error ('Group OU [{0}] Path Not Found!' -f $ADGroupOUPath) -ErrorAction Stop
     }
-    Write-Verbose ('{0}: VALIDATED - Group OU Path "{1}"' -f (get-date).tostring(),$_GroupOUPath.distinguishedName)
+    Write-Verbose ('{0}: VALIDATED - Group OU Path [{1}]' -f (get-date).tostring(),$_GroupOUPath.distinguishedName)
     #endregion
 
     #endregion
 
     #region Join AD Domain
     if ($ServerOSType -eq 'Windows') {
-        $Script =  ('$Password = Convertto-SecureString ')
-        $Script += ("'{0}' -Force -AsPlainText;" -f $DomainCreds.GetNetworkCredential().Password)
-        $Script += ('$Cred = New-Object PSCredential "{0}",$Password;' -f $DomainCreds.UserName)
-        $Script += ('Add-Computer -DomainName "{0}" -OUPath "{1}" -Credential $Cred -Restart' -f $ADDomainName,$_serveroupath.distinguishedName)
+        $_Result = Invoke-VMScript `
+            -VM $_VM `
+            -GuestCredential $ServerOSCreds `
+            -ScriptText (
+                ('$Password = Convertto-SecureString ') +
+                ("'{0}' -Force -AsPlainText;" -f $DomainCreds.GetNetworkCredential().Password) + [environment]::newline +
+                ('$Cred = New-Object PSCredential "{0}",$Password;' -f $DomainCreds.UserName) + [environment]::newline +
+                ('Add-Computer -DomainName "{0}" -OUPath "{1}" -Credential $Cred' -f $ADDomainName,$ADServerOUPath)
+            ) `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
+        if ($_Result -match 'The changes will take effect after you restart the computer') {
+            Invoke-VMScript `
+                -VM $_VM `
+                -GuestCredential $ServerOSCreds `
+                -ScriptText (
+                    'Clear-EventLog -LogName "Windows PowerShell"' + [environment]::NewLine +
+                    'Restart-Computer -Force -Confirm:$false'
+                ) `
+                -Verbose:$false `
+                -ErrorAction SilentlyContinue | Out-Null
+        } else {
+            Write-Error ('PROBLEM: An Error Occured Joining domain [{0}] for computer [{1}] - `n{2}' -f $ADDomainName,$ServerName,$_Result) -ErrorAction Stop
+        }
     } else {
-        $Script = ('domainjoin-cli join --ou {0} {1} {2} {3}; history -c' -f $serveroupath, $ADDomainName, $creds.GetNetworkCredential().UserName, $creds.GetNetworkCredential().Password) 
+        $_Result = Invoke-VMScript `
+            -VM $_VM `
+            -GuestCredential $ServerOSCreds `
+            -ScriptText (
+                ('domainjoin-cli join --ou {0} {1} {2} {3}' -f $serveroupath, $ADDomainName, $creds.GetNetworkCredential().UserName, $creds.GetNetworkCredential().Password) +
+                ('history -c')
+            ) `
+            -Verbose $false `
+            -ErrorAction SilentlyContinue
     }
-    $result = VMware.VimAutomation.Core\Invoke-VMScript -ScriptText $Script -VM $_VM -GuestCredential $ServerOSCreds -ErrorAction SilentlyContinue -Verbose:$false
+    #$result = VMware.VimAutomation.Core\Invoke-VMScript -ScriptText $Script -VM $_VM -GuestCredential $ServerOSCreds -ErrorAction SilentlyContinue -Verbose:$false
 
-    Write-Verbose ('{0}: Executed Join to AD Domain "{1}" in OU Path "{2}"' -f (get-date).tostring(),$ADDomainName,$_ServerOUPath.distinguishedName)
+    Write-Verbose ('{0}: Executed Join to AD Domain [{1}] in OU Path [{2}]' -f (get-date).tostring(),$ADDomainName,$_ServerOUPath.distinguishedName)
 
     # wait for server name to resolve and respond to ping
     $_Ping = $null
-    try { $_Ping = (New-Object system.net.networkinformation.ping).Send($ServerName) } catch {}
     While (($_Ping.Status -ne 'Success') -and -Not ($_Ping)) {
+        try { $_Ping = (New-Object system.net.networkinformation.ping).Send($ServerName) } catch {}
+
         Start-Sleep 5
         Write-Verbose ('Waiting for VM to Reboot...')
-        ipconfig /flushdns | Out-Null
 
-        try { $Resolve = ([net.dns]::resolve($ServerName)) } catch {}
-        if ($Resolve) {
-            ipconfig /flushdns | Out-Null
-            try { $_Ping = (New-Object system.net.networkinformation.ping).Send($ServerName) } catch {}
-        }
+        Start-Process powershell -ArgumentList 'ipconfig /flushdns' -Verb runas -WindowStyle hidden | Out-Null
     }
 
-    # wait for AD boject to replicate
+    # wait for AD Object to replicate
     while (-Not (Get-ADComputer -filter {name -like $ServerName} -ErrorAction SilentlyContinue -Verbose:$false)) {
         Write-Verbose ('Waiting for AD Replication...')
         Start-Sleep 10
@@ -871,13 +968,33 @@ function Add-VMtoDomain {
 
     #region Ensure PSRemoting is enabled for Windows
     if ($ServerOSType -eq 'Windows') {
-        $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
+        $_Session = Test-PSRemoting `
+            -ServerName $ServerName `
+            -ServerCreds $DomainCreds `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue
         if (-Not ($_Session) -and $EnableWSMAN) {
-            VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText "Enable-PSRemoting -Force" -Verbose:$false
+            Write-Verbose ('{0}: REMOTING - Not currently enabled on [{1}]' -f (get-date).tostring(),$ServerName)
 
-            Write-Verbose ('{0}: Unable to connect via PS Remoting, Ran "Enable-PSRemoting -Force" on {1}' -f (get-date).ToString(),$_VM.Name)
+            VMware.VimAutomation.Core\Invoke-VMScript `
+                -VM $_VM `
+                -GuestCredential $ServerOSCreds `
+                -ScriptText "Enable-PSRemoting -Force" `
+                -Verbose:$false | Out-Null
 
-            $_session = New-PSSession $ServerName -Credential $DomainCreds -Verbose:$false -ErrorAction SilentlyContinue
+            Write-Verbose ('{0}: REMOTING - Executing (Enable-PSRemoting -Force) on [{1}]' -f (get-date).ToString(),$_VM.Name)
+
+            $_Session = Test-PSRemoting `
+                -ServerName $ServerName `
+                -ServerCreds $DomainCreds `
+                -Verbose:$false `
+                -ErrorAction SilentlyContinue
+
+            if (-Not $_Session) {
+                Write-Error ('PROBLEM: An Error occured configuring remoting on [{0}]' -f $ServerName) -ErrorAction Stop
+            }
+
+            Write-Verbose ('{0}: REMOTING - Successfully configured remoting on [{1}]' -f (get-date).tostring(),$ServerName)
         }
     }
     #endregion
@@ -885,60 +1002,107 @@ function Add-VMtoDomain {
     #region Update OS network adapter name
     if ($ServerOSType -eq 'Windows' -and ($_session)) {
         if ($UpdateOSNICtoPortGroupName) {
-            Invoke-Command -Session $_session -ScriptBlock {Param($Param); Get-NetAdapter -Verbose:$false | Rename-NetAdapter -NewName $Param -Verbose:$false} -ArgumentList ($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName
+            $_Result = Invoke-Command `
+                -Session $_session `
+                -Verbose:$false `
+                -ErrorAction SilentlyContinue `
+                -ScriptBlock {
+                    Get-NetAdapter | Rename-NetAdapter -NewName ($using:_VM.ExtensionData.Guest.Net.Network) | Out-Null
+                    (Get-NetAdapter).Name
+                }
             
-            Write-Verbose ('{0}: Updated OS Network Adapter Name to "{1}"' -f (get-date).ToString(),($_VM | Get-NetworkAdapter -Verbose:$false).NetworkName)
+            if ($_Result -ne $_VM.ExtensionData.Guest.Net.network) {
+                Write-Warning ('{0}: Network Adapter Name Change did not succeed' -f (get-date).tostring())
+            } else {
+                Write-Verbose ('{0}: Updated OS Network Adapter Name to [{1}]' -f (get-date).ToString(),$_VM.ExtensionData.Guest.Net.Network)
+            }
         }
     }
     #endregion
 
     #region AD Groups for Local Administrators
     if ($ConfigureADAdminGroup) {
-        if (-Not (Get-ADGroup -Filter ('Name -like "*{0}*"' -f $ADGroupAdminName) -Verbose:$false)) {
-            New-ADGroup -Name $ADGroupAdminName -SamAccountName $ADGroupAdminName -GroupScope DomainLocal -GroupCategory Security -Path $_GroupOUPath.distinguishedname -Credential $DomainCreds -Verbose:$false
-            Start-Sleep 15
-
-            Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName)
+        $_CreateGroup = $false
+        if (-Not (Get-ADGroup -filter ('Name -eq "{0}"' -f $ADGroupAdminName))) {
+            $_CreateGroup = $true
         }
+        $_ADGroup = New-ADGroupforSQL `
+            -GroupScope DomainLocal `
+            -GroupOUPath $_GroupOUPath.distinguishedName `
+            -DomainCreds $DomainCreds `
+            -GroupName $ADGroupAdminName `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue `
+            -GroupMembers $ADGroupAdminMembers `
+            -CreateGroup $_CreateGroup
+
+        if (-Not $_ADGroup) {
+            Write-Error ('PROBLEM: AD Group Creation Failed')
+        }
+
+        Write-Verbose('{0}: Created AD Group [{1}] @ [{2}]' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName)
+        Write-Verbose ('{0}: Added "{1}" to AD Group "{2}"' -f (get-date).ToString(),($ADGroupAdminMembers.split([environment]::newline) -join ','),$ADGroupAdminName)
 
         if ($ServerOSType -eq 'Linux') {
+            $_CreateGroup = $false
             if (-Not (Get-ADGroup -Filter ('Name -like "*{0}*"' -f $ADGroupSSHName) -Verbose:$false)) {
-                New-ADGroup -Name $ADGroupSSHName -SamAccountName $ADGroupSSHName -GroupScope DomainLocal -GroupCategory Security -Path $_GroupOUPath.distinguishedname -Credential $DomainCreds -Verbose:$false
-                Start-Sleep 15
-
-                Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupSSHName,$_GroupOUPath.distinguishedName)
-
-                Add-ADGroupMember -Identity $ADGroupSSHName -Members $ADGroupAdminName -Credential $DomainCreds -Verbose:$false
-
-                Write-Verbose ('{0}: Added AD Group "{1}" to AD Group "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$ADGroupSSHName)
+                $_CreateGroup = $true
             }
-        }
 
-        # Add users and groups to AD Group
-        $ADGroupAdminMembers | Where-Object {get-adobject -filter {name -like $_ -or samaccountname -like $_} -Verbose:$false} | ForEach-Object { Add-ADGroupMember -Identity $ADGroupAdminName -Members $_ -Credential $DomainCreds -ErrorAction SilentlyContinue -Verbose:$false}
+            $_ADSSHGroup = New-ADGroupforSQL `
+                -GroupScope DomainLocal `
+                -GroupOUPath $_GroupOUPath.distinguishedName `
+                -DomainCreds $DomainCreds `
+                -GroupName $ADGroupSSHName `
+                -Verbose:$false `
+                -ErrorAction SilentlyContinue `
+                -GroupMembers $ADGroupAdminName `
+                -CreateGroup $_CreateGroup
 
-        Write-Verbose ('{0}: Added "{1}" to AD Group "{2}"' -f (get-date).ToString(),($ADGroupAdminMembers.split([environment]::newline) -join ','),$ADGroupAdminName)
+            if (-Not $_ADSSHGroup) {
+                Write-Warning ("`t`tAD Group [{0}] had a problem during creation/update...manual steps may need to be taken" -f $ADGroupSSHName)
+            }
+
+            Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupSSHName,$_GroupOUPath.distinguishedName)
+            Write-Verbose ('{0}: Added AD Group "{1}" to AD Group "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$ADGroupSSHName)
+        }   
     }
     
     if ($ServerOSType -eq 'Windows') {
         # configure AD group on Server OS
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -GuestCredential $ServerOSCreds -ScriptText ('Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName) -Verbose:$false
-        #Invoke-Command -Session $_session -ScriptBlock {param($GroupName); Add-LocalGroupMember -Group 'Administrators' -Member $GroupName -Verbose:$false} -ArgumentList $ADGroupAdminName -Verbose:$false
-        
+        VMware.VimAutomation.Core\Invoke-VMScript `
+            -VM $_VM `
+            -GuestCredential $ServerOSCreds `
+            -ScriptText (
+                'Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName
+            ) `
+            -Verbose:$false
+
         Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
     } else {
-        #Configure Sudoers file
+        VMware.VimAutomation.Core\Invoke-VMScript `
+            -VM $_VM `
+            -GuestCredential $rootcred `
+            -ScriptType bash `
+            -Verbose:$false `
+            -ScriptText (
+                ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins" + [environment]::newline +
+                ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName) +
+                ('/opt/pbis/bin/update-dns')
+            )
+        
+        <# #Configure Sudoers file
         $Script = ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins"
         VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
         #Configure SSH Allowed
         $Script = ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName)
-        $Script = { sed -i "s/linux^admins/linux^admins srv-$(hostname | tr /A-Z/ /a-z/)-ssh/" /etc/ssh/sshd_config }
+        #$Script = { sed -i "s/linux^admins/linux^admins srv-$(hostname | tr /A-Z/ /a-z/)-ssh/" /etc/ssh/sshd_config }
         VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
         ##Update DNS registration
         $Script = { /opt/pbis/bin/update-dns }
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false #>
     }
     #endregion
 
