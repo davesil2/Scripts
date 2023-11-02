@@ -698,7 +698,7 @@ function Add-VMtoDomain {
             Mandatory=$true,
             ValueFromPipelineByPropertyName=$true
         )]
-        [Alias('vCenterCredential')]
+        [Alias('DomainCredential')]
         [pscredential]
         $DomainCreds,
         
@@ -875,7 +875,7 @@ function Add-VMtoDomain {
             -ErrorAction SilentlyContinue
     }
 
-    if ($_Result -notlike '*Lost = 0*') {
+    if ($_Result.ScriptOutput -notlike '*Lost = 0*') {
         Write-Error ('Domain [{0}] not available on VM, check network' -f $ADDomainName) -ErrorAction Stop
     }
 
@@ -883,18 +883,18 @@ function Add-VMtoDomain {
     #endregion
 
     #region Server and Group OUPath Validation
-    $_ServerOUPath = Get-Item "AD:\$ADServerOUPath" -ErrorAction SilentlyContinue -Verbose:$false
-    $_GroupOUPath = Get-Item "AD:\$ADGroupOUPath" -ErrorAction SilentlyContinue -Verbose:$false
+    $_ServerOUPath = Get-ADObject $ADServerOUPath  -ErrorAction SilentlyContinue -Verbose:$false
+    # $_GroupOUPath = Get-ADObject $ADGroupOUPath -ErrorAction SilentlyContinue -Verbose:$false
 
     if (-Not $_ServerOUPath) {
         Write-Error ('Server OU [{0}] Path not found!' -f $ADServerOUPath) -ErrorAction Stop
     }
     Write-Verbose ('{0}: VALIDATED - Server OU Path [{1}]' -f (get-date).tostring(),$_ServerOUPath.distinguishedName)
 
-    if (-Not $_GroupOUPath) {
-        Write-Error ('Group OU [{0}] Path Not Found!' -f $ADGroupOUPath) -ErrorAction Stop
-    }
-    Write-Verbose ('{0}: VALIDATED - Group OU Path [{1}]' -f (get-date).tostring(),$_GroupOUPath.distinguishedName)
+    # if (-Not $_GroupOUPath) {
+    #     Write-Error ('Group OU [{0}] Path Not Found!' -f $ADGroupOUPath) -ErrorAction Stop
+    # }
+    # Write-Verbose ('{0}: VALIDATED - Group OU Path [{1}]' -f (get-date).tostring(),$_GroupOUPath.distinguishedName)
     #endregion
 
     #endregion
@@ -910,9 +910,11 @@ function Add-VMtoDomain {
                 ('$Cred = New-Object PSCredential "{0}",$Password;' -f $DomainCreds.UserName) + [environment]::newline +
                 ('Add-Computer -DomainName "{0}" -OUPath "{1}" -Credential $Cred' -f $ADDomainName,$ADServerOUPath)
             ) `
+            -ScriptType Powershell `
             -Verbose:$false `
             -ErrorAction SilentlyContinue
-        if ($_Result -match 'The changes will take effect after you restart the computer') {
+            
+        if ($_Result.ScriptOutput -match 'The changes will take effect after you restart the computer') {
             Invoke-VMScript `
                 -VM $_VM `
                 -GuestCredential $ServerOSCreds `
@@ -920,6 +922,7 @@ function Add-VMtoDomain {
                     'Clear-EventLog -LogName "Windows PowerShell"' + [environment]::NewLine +
                     'Restart-Computer -Force -Confirm:$false'
                 ) `
+                -ScriptType Powershell `
                 -Verbose:$false `
                 -ErrorAction SilentlyContinue | Out-Null
         } else {
@@ -948,11 +951,16 @@ function Add-VMtoDomain {
         Start-Sleep 5
         Write-Verbose ('Waiting for VM to Reboot...')
 
-        Start-Process powershell -ArgumentList 'ipconfig /flushdns' -Verb runas -WindowStyle hidden | Out-Null
+        if ($PSVersionTable.OS -like '*windows*') {
+            Start-Process powershell -ArgumentList 'ipconfig /flushdns' -Verb runas -WindowStyle hidden | Out-Null
+        }
+        if ($PSVersionTable.OS -like '*darwin*') {
+            dscacheutil -flushcache
+        }
     }
 
     # wait for AD Object to replicate
-    while (-Not (Get-ADComputer -filter {name -like $ServerName} -ErrorAction SilentlyContinue -Verbose:$false)) {
+    while (-Not (Get-ADComputer -filter "name -like '$ServerName'" -ErrorAction SilentlyContinue -Verbose:$false)) {
         Write-Verbose ('Waiting for AD Replication...')
         Start-Sleep 10
     }
@@ -967,36 +975,36 @@ function Add-VMtoDomain {
     #region OS Configuration
 
     #region Ensure PSRemoting is enabled for Windows
-    if ($ServerOSType -eq 'Windows') {
-        $_Session = Test-PSRemoting `
-            -ServerName $ServerName `
-            -ServerCreds $DomainCreds `
-            -Verbose:$false `
-            -ErrorAction SilentlyContinue
-        if (-Not ($_Session) -and $EnableWSMAN) {
-            Write-Verbose ('{0}: REMOTING - Not currently enabled on [{1}]' -f (get-date).tostring(),$ServerName)
+    # if ($ServerOSType -eq 'Windows') {
+    #     $_Session = Test-PSRemoting `
+    #         -ServerName $ServerName `
+    #         -ServerCreds $DomainCreds `
+    #         -Verbose:$false `
+    #         -ErrorAction SilentlyContinue
+    #     if (-Not ($_Session) -and $EnableWSMAN) {
+    #         Write-Verbose ('{0}: REMOTING - Not currently enabled on [{1}]' -f (get-date).tostring(),$ServerName)
 
-            VMware.VimAutomation.Core\Invoke-VMScript `
-                -VM $_VM `
-                -GuestCredential $ServerOSCreds `
-                -ScriptText "Enable-PSRemoting -Force" `
-                -Verbose:$false | Out-Null
+    #         VMware.VimAutomation.Core\Invoke-VMScript `
+    #             -VM $_VM `
+    #             -GuestCredential $ServerOSCreds `
+    #             -ScriptText "Enable-PSRemoting -Force" `
+    #             -Verbose:$false | Out-Null
 
-            Write-Verbose ('{0}: REMOTING - Executing (Enable-PSRemoting -Force) on [{1}]' -f (get-date).ToString(),$_VM.Name)
+    #         Write-Verbose ('{0}: REMOTING - Executing (Enable-PSRemoting -Force) on [{1}]' -f (get-date).ToString(),$_VM.Name)
 
-            $_Session = Test-PSRemoting `
-                -ServerName $ServerName `
-                -ServerCreds $DomainCreds `
-                -Verbose:$false `
-                -ErrorAction SilentlyContinue
+    #         $_Session = Test-PSRemoting `
+    #             -ServerName $ServerName `
+    #             -ServerCreds $DomainCreds `
+    #             -Verbose:$false `
+    #             -ErrorAction SilentlyContinue
 
-            if (-Not $_Session) {
-                Write-Error ('PROBLEM: An Error occured configuring remoting on [{0}]' -f $ServerName) -ErrorAction Stop
-            }
+    #         if (-Not $_Session) {
+    #             Write-Error ('PROBLEM: An Error occured configuring remoting on [{0}]' -f $ServerName) -ErrorAction Stop
+    #         }
 
-            Write-Verbose ('{0}: REMOTING - Successfully configured remoting on [{1}]' -f (get-date).tostring(),$ServerName)
-        }
-    }
+    #         Write-Verbose ('{0}: REMOTING - Successfully configured remoting on [{1}]' -f (get-date).tostring(),$ServerName)
+    #     }
+    # }
     #endregion
 
     #region Update OS network adapter name
@@ -1021,89 +1029,89 @@ function Add-VMtoDomain {
     #endregion
 
     #region AD Groups for Local Administrators
-    if ($ConfigureADAdminGroup) {
-        $_CreateGroup = $false
-        if (-Not (Get-ADGroup -filter ('Name -eq "{0}"' -f $ADGroupAdminName))) {
-            $_CreateGroup = $true
-        }
-        $_ADGroup = New-ADGroupforSQL `
-            -GroupScope DomainLocal `
-            -GroupOUPath $_GroupOUPath.distinguishedName `
-            -DomainCreds $DomainCreds `
-            -GroupName $ADGroupAdminName `
-            -Verbose:$false `
-            -ErrorAction SilentlyContinue `
-            -GroupMembers $ADGroupAdminMembers `
-            -CreateGroup $_CreateGroup
+    # if ($ConfigureADAdminGroup) {
+    #     $_CreateGroup = $false
+    #     if (-Not (Get-ADGroup -filter ('Name -eq "{0}"' -f $ADGroupAdminName))) {
+    #         $_CreateGroup = $true
+    #     }
+    #     $_ADGroup = New-ADGroupforSQL `
+    #         -GroupScope DomainLocal `
+    #         -GroupOUPath $_GroupOUPath.distinguishedName `
+    #         -DomainCreds $DomainCreds `
+    #         -GroupName $ADGroupAdminName `
+    #         -Verbose:$false `
+    #         -ErrorAction SilentlyContinue `
+    #         -GroupMembers $ADGroupAdminMembers `
+    #         -CreateGroup $_CreateGroup
 
-        if (-Not $_ADGroup) {
-            Write-Error ('PROBLEM: AD Group Creation Failed')
-        }
+    #     if (-Not $_ADGroup) {
+    #         Write-Error ('PROBLEM: AD Group Creation Failed')
+    #     }
 
-        Write-Verbose('{0}: Created AD Group [{1}] @ [{2}]' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName)
-        Write-Verbose ('{0}: Added "{1}" to AD Group "{2}"' -f (get-date).ToString(),($ADGroupAdminMembers.split([environment]::newline) -join ','),$ADGroupAdminName)
+    #     Write-Verbose('{0}: Created AD Group [{1}] @ [{2}]' -f (get-date).ToString(),$ADGroupAdminName,$_GroupOUPath.distinguishedName)
+    #     Write-Verbose ('{0}: Added "{1}" to AD Group "{2}"' -f (get-date).ToString(),($ADGroupAdminMembers.split([environment]::newline) -join ','),$ADGroupAdminName)
 
-        if ($ServerOSType -eq 'Linux') {
-            $_CreateGroup = $false
-            if (-Not (Get-ADGroup -Filter ('Name -like "*{0}*"' -f $ADGroupSSHName) -Verbose:$false)) {
-                $_CreateGroup = $true
-            }
+    #     if ($ServerOSType -eq 'Linux') {
+    #         $_CreateGroup = $false
+    #         if (-Not (Get-ADGroup -Filter ('Name -like "*{0}*"' -f $ADGroupSSHName) -Verbose:$false)) {
+    #             $_CreateGroup = $true
+    #         }
 
-            $_ADSSHGroup = New-ADGroupforSQL `
-                -GroupScope DomainLocal `
-                -GroupOUPath $_GroupOUPath.distinguishedName `
-                -DomainCreds $DomainCreds `
-                -GroupName $ADGroupSSHName `
-                -Verbose:$false `
-                -ErrorAction SilentlyContinue `
-                -GroupMembers $ADGroupAdminName `
-                -CreateGroup $_CreateGroup
+    #         $_ADSSHGroup = New-ADGroupforSQL `
+    #             -GroupScope DomainLocal `
+    #             -GroupOUPath $_GroupOUPath.distinguishedName `
+    #             -DomainCreds $DomainCreds `
+    #             -GroupName $ADGroupSSHName `
+    #             -Verbose:$false `
+    #             -ErrorAction SilentlyContinue `
+    #             -GroupMembers $ADGroupAdminName `
+    #             -CreateGroup $_CreateGroup
 
-            if (-Not $_ADSSHGroup) {
-                Write-Warning ("`t`tAD Group [{0}] had a problem during creation/update...manual steps may need to be taken" -f $ADGroupSSHName)
-            }
+    #         if (-Not $_ADSSHGroup) {
+    #             Write-Warning ("`t`tAD Group [{0}] had a problem during creation/update...manual steps may need to be taken" -f $ADGroupSSHName)
+    #         }
 
-            Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupSSHName,$_GroupOUPath.distinguishedName)
-            Write-Verbose ('{0}: Added AD Group "{1}" to AD Group "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$ADGroupSSHName)
-        }   
-    }
+    #         Write-Verbose('{0}: Created AD Group "{1}" @ "{2}"' -f (get-date).ToString(),$ADGroupSSHName,$_GroupOUPath.distinguishedName)
+    #         Write-Verbose ('{0}: Added AD Group "{1}" to AD Group "{2}"' -f (get-date).ToString(),$ADGroupAdminName,$ADGroupSSHName)
+    #     }   
+    # }
     
-    if ($ServerOSType -eq 'Windows') {
-        # configure AD group on Server OS
-        VMware.VimAutomation.Core\Invoke-VMScript `
-            -VM $_VM `
-            -GuestCredential $ServerOSCreds `
-            -ScriptText (
-                'Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName
-            ) `
-            -Verbose:$false
+    # if ($ServerOSType -eq 'Windows') {
+    #     # configure AD group on Server OS
+    #     VMware.VimAutomation.Core\Invoke-VMScript `
+    #         -VM $_VM `
+    #         -GuestCredential $ServerOSCreds `
+    #         -ScriptText (
+    #             'Add-LocalGroupMember -Group "Administrators" -Member "{0}" -Verbose:$false' -f $ADGroupAdminName
+    #         ) `
+    #         -Verbose:$false
 
-        Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
-    } else {
-        VMware.VimAutomation.Core\Invoke-VMScript `
-            -VM $_VM `
-            -GuestCredential $rootcred `
-            -ScriptType bash `
-            -Verbose:$false `
-            -ScriptText (
-                ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins" + [environment]::newline +
-                ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName) +
-                ('/opt/pbis/bin/update-dns')
-            )
+    #     Write-Verbose ('{0}: Added Group "{1}" to local Administrators Group!' -f (get-date).ToString(),$ADGroupAdminName)
+    # } else {
+    #     VMware.VimAutomation.Core\Invoke-VMScript `
+    #         -VM $_VM `
+    #         -GuestCredential $rootcred `
+    #         -ScriptType bash `
+    #         -Verbose:$false `
+    #         -ScriptText (
+    #             ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins" + [environment]::newline +
+    #             ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName) +
+    #             ('/opt/pbis/bin/update-dns')
+    #         )
         
-        <# #Configure Sudoers file
-        $Script = ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins"
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+    #     <# #Configure Sudoers file
+    #     $Script = ('echo -e "%{0}\t\t\t\tALL=(root)\t\tNOEXEC:ALL,"'  -f $ADGroupAdminName) + "'!/usr/bin/su,!/usr/bin/passwd' >> /etc/sudoers.d/Admins"
+    #     VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
-        #Configure SSH Allowed
-        $Script = ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName)
-        #$Script = { sed -i "s/linux^admins/linux^admins srv-$(hostname | tr /A-Z/ /a-z/)-ssh/" /etc/ssh/sshd_config }
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
+    #     #Configure SSH Allowed
+    #     $Script = ('if (($(grep -c allowgroups /etc/ssh/sshd_config)!=0)); then sed -i "s/allowgroups*/allowgroups linux^admins {0}/g" /etc/ssh/sshd_config; else sed -i "/#Listener/aallowgroups linux^admins {0}" /etc/ssh/sshd_config; fi' -f $ADGroupSSHName)
+    #     #$Script = { sed -i "s/linux^admins/linux^admins srv-$(hostname | tr /A-Z/ /a-z/)-ssh/" /etc/ssh/sshd_config }
+    #     VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false
 
-        ##Update DNS registration
-        $Script = { /opt/pbis/bin/update-dns }
-        VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false #>
-    }
+    #     ##Update DNS registration
+    #     $Script = { /opt/pbis/bin/update-dns }
+    #     VMware.VimAutomation.Core\Invoke-VMScript -VM $_VM -ScriptText $script -GuestCredential $rootcred -ScriptType Bash -Verbose:$false #>
+    # }
     #endregion
 
     #endregion
@@ -1305,18 +1313,18 @@ function Add-DisktoVM {
             Write-Error ('PROBLEM: VM [{0}] not found!' -f $ServerName) -ErrorAction Stop
         }
 
-        $_Session = Test-PSRemoting `
-            -ServerName $ServerName `
-            -ServerCreds $DomainCreds `
-            -Verbose:$false `
-            -ErrorAction SilentlyContinue
-        
-        if (-Not $_session) {
-            Write-Error ('PROBLEM: Unable to connect to [{0}] Remoting Session!' -f $ServerName) -ErrorAction Stop
+        if (-Not $ServerDiskPath.EndsWith('\')) {
+            $ServerDiskPath += '\'
         }
 
-        if (Invoke-Command -Session $_Session -ScriptBlock {Test-Path -Path $using:ServerDiskPath -ErrorAction SilentlyContinue}) {
-            Write-Error ('PROBLEM: Path/Drive [{0}] already exists!' -f $ServerDiskPath) -ErrorAction Stop
+        $_Result = $_VM | Invoke-VMScript `
+            -GuestCredential $DomainCreds `
+            -ScriptText "Test-Path -Path $ServerDiskPath -ErrorAction SilentlyContinue" `
+            -ErrorAction SilentlyContinue `
+            -Verbose:$false
+
+        if ($_Result.ScriptOutput -Match 'True') {
+            Write-Error ('PROBLEM: DiskPath [{0}] already exists on Server [{1}]' -f $ServerDiskPath,$ServerName) -ErrorAction Stop
         }
 
         Write-Verbose ('{0}: VALIDATED - Ready to Add Disk "{1}" at "{2}" GB to VM "{3}"' -f (get-date).tostring(),$ServerDiskPath,$ServerDiskSizeGB,$_VM.Name)
@@ -1326,12 +1334,14 @@ function Add-DisktoVM {
         #region Validate Datastore and Disk Space
         if (-Not $vCenterDataStore) {
             $_Datastore = VMware.VimAutomation.Core\Get-DataStore `
-                -Name $_vm.ExtensionData.Summary.Config.VmPathName.Split('[')[1].split(']')[0] `
+                -Name ($_VM | Get-Datastore | Select-Object -First 1) `
                 -Verbose:$false
+
             Write-Verbose ('{0}: VALIDATED - No Datastore Selected, Using VM [{1}] Default [{2}]"' -f (get-date).tostring(),$_VM.Name,$_Datastore.Name)
         } else {
             $DatastoreClusters = VMware.VimAutomation.Core\Get-DatastoreCluster -Verbose:$false
             $Datastores = VMware.VimAutomation.Core\Get-Datastore -Verbose:$false
+
             if ($DatastoreClusters) {
                 $_Datastore = $DatastoreClusters | Where-Object {$_.Name -like $vCenterDataStore}
             }
@@ -1378,72 +1388,51 @@ function Add-DisktoVM {
         #endregion
 
         #region Create Partion, format and mount
-        $_Volume = Invoke-Command -ScriptBlock {
-            $_Disk = Get-Disk | Where-Object {$_.partitionStyle -eq 'RAW'}
-            $_Disk | Initialize-Disk
-
-            $_Partition = $_Disk | New-Partition `
-                -UseMaximumSize `
-                -AssignDriveLetter
-
-            $_Partition | Format-Volume `
-                -AllocationUnit (invoke-expression $using:AllocationUnitSize) `
-                -Confirm:$false `
-                -NewFileSystemLabel $using:ServerDiskLabel
-        } -Session $_Session
-
-        if (-Not $_Volume) {
-            Write-Error ('PROBLEM: An Error Occured configuring (Path: [{0}] - Label: [{1}])' -f $ServerDiskPath,$ServerDiskLabel)
-        }
-
-        Write-Verbose ('{0}: CONFIGURED - Disk Added (TempDriveLetter: [{1}] - Label: [{2}])' -f (get-date).tostring(),$_Volume.DriveLetter,$ServerDiskLabel)
-
-        # Remove User and Creator Owner ACL's
+        $_Script = @()
+        $_Script += '$_Disk = Get-Disk | Where-Object {$_.partitionStyle -eq "RAW"}'
+        $_Script += '$_Disk | Initialize-Disk'
+        $_Script += '$_Partition = $_Disk | New-Partition -UseMaximumSize -AssignDriveLetter'
+        $_Script += '$_Partition | Format-Volume -AllocationUnit (invoke-expression "{0}") -Confirm:$false -NewFileSystemLabel "{1}" | Out-Null' -f $AllocationUnitSize,$ServerDiskLabel
         if ($CleanDiskACL) {
-            Invoke-Command -ScriptBlock {
-                $_ACL = Get-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
-                $_ACL.Access | Where-Object {
-                    $_.IdentityReference -in ('BUILTIN\Users','CREATOR OWNER')
-                } | ForEach-Object {
-                    $_ACL.RemoveAccessRule($_) | Out-Null
-                }
-                $_ACL | Set-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike '\\?\volume*'})
-            } -Session $_Session
-            
-            Write-Verbose ('{0}: REMOVED - Default Permissions for Users and Creator Owner [{1}]' -f (get-date).tostring(),$ServerDiskPath)
+            $_Script += '$_ACL = Get-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike "*volume*"})'
+            $_Script += '$_ACL.Access | Where-Object {$_.IdentityReference -in ("BUILTIN\Users","CREATOR OWNER")} | ForEach-Object {$_ACL.RemoveAccessRule($_) | Out-Null}'
+            $_Script += '$_ACL | Set-ACL ($_Partition.AccessPaths | Where-Object {$_ -notlike "\\?\volume*"})'
+        }
+        if ($ServerDiskPath.Split('\')[1]) {
+            $_Script += ("New-Item -Path '{0}' -ItemType Container | Out-Null" -f $ServerDiskPath)
+        }
+        $_Script += '$_Partition | Remove-PartitionAccessPath -AccessPath ($_Partition.AccessPaths | Where-Object {$_ -notlike "*volume*"})'
+        $_Script += ('$_Partition | Add-PartitionAccessPath -AccessPath "{0}"' -f $ServerdiskPath)
+        
+        $_Result = $_VM | Invoke-VMScript `
+            -GuestCredential $DomainCreds `
+            -ScriptText ($_Script -join [environment]::newline) `
+            -ErrorAction SilentlyContinue `
+            -Verbose:$false
+
+        if ($_Result.ScriptOutput -Match 'Error') {
+            Write-Error ('PROBLEM: An Error occured configuring the Disk: [{0}]' -f $_Result.ScriptOutput) -ErrorAction Stop
         }
 
-        # Create Folder if it's a Mount Point
-        if ($ServerDiskPath.Split('\')[1]) {
-            Invoke-Command -ScriptBlock {
-                New-Item `
-                    -Name $using:ServerDiskPath `
-                    -ItemType container | Out-Null
-            } -Session $_Session
+        $_Result.ScriptOutput.Split([environment]::newline) | Where-object {$_} | foreach-object { Write-Verbose ("{0}: DISK CONFIG: `t {1}" -f (get-date).tostring(),$_)}
 
-            Write-Verbose ('{0}: CREATED - Mount Point Folder [{1}]' -f (get-date).tostring(),$ServerDiskPath)
-        } 
+        $_Result = $_VM | Invoke-VMScript `
+            -ScriptText "Get-Partition | Where-Object {`$_.AccessPaths -contains '$ServerDiskPath'} | fl *" `
+            -ErrorAction SilentlyContinue `
+            -GuestCredential $DomainCreds `
+            -Verbose:$false
 
-        # Remove Temporary Drive Letter and Add mounting path
-        Invoke-Command -ScriptBlock {
-            $_Partition | Remove-PartitionAccessPath `
-                -AccessPath ($_Partition.AccessPaths | Where-Object {$_ -notlike '*volume*'})
+        if ($_Result.ScriptOutput) {
+            Write-Verbose ('{0}: [{1} GB] Size Disk Added at [{2}]' -f (get-date).tostring(),$ServerDiskSizeGB,$ServerDiskPath)
+        } else {
+            Write-Error ('PROBLEM: The Disk Path [{0}] is not available as requested' -f $ServerDiskPath) -ErrorAction Stop
+        }
 
-            $_Partition | Add-PartitionAccessPath `
-                -AccessPath $using:ServerDiskPath
-        } -Session $_Session
-
-        Write-Verbose ('{0}: ASSIGNED - Disk to Path [{1}]' -f $ServerDiskPath)
         #endregion
 
         #endregion
     }
     End {
-        $_session | Remove-PSSession `
-            -ErrorAction SilentlyContinue `
-            -Verbose:$false `
-            -WarningAction SilentlyContinue `
-            -Confirm:$false
     }
     <#
     .SYNOPSIS
