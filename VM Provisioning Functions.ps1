@@ -1010,16 +1010,13 @@ function Add-VMtoDomain {
     #region Update OS network adapter name
     if ($ServerOSType -eq 'Windows' -and ($_session)) {
         if ($UpdateOSNICtoPortGroupName) {
-            $_Result = Invoke-Command `
-                -Session $_session `
+            $_Result = $_VM | Invoke-VMScript `
+                -GuestCredential $ServerOSCreds `
+                -ScriptText ("Get-NetAdapter | Rename-NetAdapter -NewName '{0}' | Out-Null; (Get-NetAdapter).Name" -f $_vm.ExtensionData.Guest.Network) `
                 -Verbose:$false `
-                -ErrorAction SilentlyContinue `
-                -ScriptBlock {
-                    Get-NetAdapter | Rename-NetAdapter -NewName ($using:_VM.ExtensionData.Guest.Net.Network) | Out-Null
-                    (Get-NetAdapter).Name
-                }
+                -ErrorAciton SilentlyContinue
             
-            if ($_Result -ne $_VM.ExtensionData.Guest.Net.network) {
+            if ($_Result.ScriptOutput -ne $_VM.ExtensionData.Guest.Net.network) {
                 Write-Warning ('{0}: Network Adapter Name Change did not succeed' -f (get-date).tostring())
             } else {
                 Write-Verbose ('{0}: Updated OS Network Adapter Name to [{1}]' -f (get-date).ToString(),$_VM.ExtensionData.Guest.Net.Network)
