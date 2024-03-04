@@ -72,21 +72,6 @@ Function Get-OrionNode {
         [String[]]$Fields = @('NodeID','uri','caption')
     )
 
-    if ($PSEdition -eq 'Desktop') {
-        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
-            [bool] CheckValidationResult (
-                [System.Net.ServicePoint]$srvPoint,
-                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
-                [System.Net.WebRequest]$request,
-                [int]$certificateProblem
-            ) {
-                return $true
-            }
-        }
-    
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
-    }
-
     $Query = ("Select {0} from Orion.Nodes" -f ($Fields -Join ','))
 
     if (-Not $ALL) {
@@ -103,6 +88,109 @@ Function Get-OrionNode {
         }
     }
     
+    if ($Query) {
+        [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+
+        $Headers = @{
+            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
+        }
+
+        $Splat = @{
+            Method = 'Get'
+            URI = $URI.Uri
+            Credential = $SWISCredentials
+            Headers = $Headers
+            Verbose = $False
+        }
+
+        if ($PSEdition -ne 'Desktop') {
+            $Splat += @{
+                SkipCertificateCheck = $true
+            }
+        }
+
+        $Response = Invoke-RestMethod @Splat
+    
+        return ($Response.Results)
+    
+    } else {
+        Write-Error ("Invalid Query created [HOSTNAME: {0}] or [IPADDRESS: {1}]" -f $Hostname,$IPAddress)
+    }
+}
+
+Function Get-OrionContainer {
+    param(
+        [String]$OrionServer,
+        [Int]$OrionAPIPort = 17778,
+        [pscredential]$SWISCredentials,
+        [String]$ContainerName,
+        [switch]$ALL,
+        [String[]]$Fields = @('ContainerID','DisplayName','Description','Status','StatusDescription','uri')
+    )
+
+    $Query = ("Select {0} from Orion.Container" -f ($Fields -Join ','))
+
+    if (-Not $ALL) {
+        if ($ContainerName) {
+            $Query += (" where Container.Name='{0}'" -f $ContainerName)
+        } else {
+            $Query = $null
+        }
+    }
+
+    if ($Query) {
+        [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+
+        $Headers = @{
+            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
+        }
+
+        $Splat = @{
+            Method = 'Get'
+            URI = $URI.Uri
+            Credential = $SWISCredentials
+            Headers = $Headers
+            Verbose = $False
+        }
+
+        if ($PSEdition -ne 'Desktop') {
+            $Splat += @{
+                SkipCertificateCheck = $true
+            }
+        }
+
+        $Response = Invoke-RestMethod @Splat
+    
+        return ($Response.Results)
+    
+    } else {
+        Write-Error ("Invalid Query created [HOSTNAME: {0}] or [IPADDRESS: {1}]" -f $Hostname,$IPAddress)
+    }
+}
+
+function Get-OrionContainerMembers {
+    param(
+        [String]$OrionServer,
+        [Int]$OrionAPIPort = 17778,
+        [pscredential]$SWISCredentials,
+        [String]$ContainerName,
+        [String]$ContainerId,
+        [switch]$ALL,
+        [String[]]$Fields = @('ContainerID','MemberPrimaryID','MemberEntityType','DisplayName','Description','MemberUri','uri')
+    )
+
+    $Query = ("Select {0} from Orion.ContainerMembers" -f ($Fields -Join ','))
+
+    if (-Not $ALL) {
+        if ($ContainerName) {
+            $Query += (" where ContainerMembers.Name='{0}'" -f $ContainerName)
+        } elseif ($ContainerId) {
+            $Query += (" where ContainerMembers.ContainerID='{0}'" -f $ContainerId)
+        }else {
+            $Query = $null
+        }
+    }
+
     if ($Query) {
         [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
 
