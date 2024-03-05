@@ -76,13 +76,13 @@ Function Get-OrionNode {
 
     if (-Not $ALL) {
         if ($HostName) {
-            $Query += (" where Nodes.HostName='{1}'" -f $HostName)
+            $Query += (" where Nodes.Caption='{0}'" -f $HostName)
         } elseif ($IPAddress) {
-            $Query += (" where Nodes.IPAddress='{1}'" -f $IPAddress)
+            $Query += (" where Nodes.IPAddress='{0}'" -f $IPAddress)
         } elseif ($NodeID) {
-            $Query += (" where Nodes.NodeID='{1}'" -f $NodeID)
+            $Query += (" where Nodes.NodeID='{0}'" -f $NodeID)
         } elseif ($NodeURI) {
-            $Query += (" where Nodes.uri='{1}'" -f $NodeURI)
+            $Query += (" where Nodes.uri='{0}'" -f $NodeURI)
         } else {
             $Query = $null
         }
