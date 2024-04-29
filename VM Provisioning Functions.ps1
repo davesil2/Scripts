@@ -77,6 +77,15 @@ function New-VMfromTemplate {
         [string]
         $vCenterTemplate,
 
+        # Template is in Content Library
+        [parameter(
+            Mandatory=$false,
+            ValueFromPipelineByPropertyName=$true
+        )]
+        [Alias('ContentLibrary')]
+        [switch]
+        $UseContentLibrary,
+
         # Datastore or Datastore cluster to create VM on
         [parameter(
             Mandatory=$true,
@@ -310,7 +319,12 @@ function New-VMfromTemplate {
     #endregion
 
     #region Template Validation
-    $Templates = VMware.VimAutomation.Core\Get-Template -Verbose:$false
+    if ($UseContentLibrary) {
+        $Templates = VMware.VimAutomation.Core\Get-ContentLibraryItem -ItemType ovf -Verbose:$false
+    } else {
+        $Templates = VMware.VimAutomation.Core\Get-Template -Verbose:$false
+    }
+    
     if ($Templates){
         $_Template = $Templates | Where-Object {$_.Name -like $vCenterTemplate}
     }
@@ -344,8 +358,10 @@ function New-VMfromTemplate {
     if ($_CustomizationSpec.count -ne 1) {
         Write-Error ('more than one matching customization spec found!') -ErrorAction Stop
     }
-    if ($_Template.ExtensionData.Config.GuestFullName -notlike ('*{0}*' -f $_CustomizationSpec.OSType)) {
-        Write-Error ('Customization Spec OS Type does not match Template!') -ErrorAction Stop
+    if (-Not $UseContentLibrary) {
+        if ($_Template.ExtensionData.Config.GuestFullName -notlike ('*{0}*' -f $_CustomizationSpec.OSType)) {
+            Write-Error ('Customization Spec OS Type does not match Template!') -ErrorAction Stop
+        }
     }
     Write-Verbose ('{0}: VALIDATED - Customization Spec "{1}" found on vCenter "{2}"' -f (get-date).ToString(),$_CustomizationSpec.Name,$_vCenter.Name)
     #endregion
@@ -366,7 +382,7 @@ function New-VMfromTemplate {
             Write-Warning ('Team Owner Attribute Not Found!')
         }
     } else {
-        Write-Warning ('No Attributes Founs!')
+        Write-Warning ('No Attributes Found!')
     }
     #endregion
 
@@ -503,32 +519,43 @@ function New-VMfromTemplate {
     #endregion
 
     #region Create VM
+    $NewVMSplat = @{
+        ResourcePool = $_VMHost.Name
+        Name = $ServerName
+        DiskStorageFormat = $vCenterDiskType
+        DataStore = $_Datastore.Name
+        Verbose = $false
+        ErrorAction = 'silentlycontinue'
+    }
     if ($_VMFolder) {
-        VMware.VimAutomation.Core\New-VM `
-            -ResourcePool $_VMHost.Name `
-            -Name $ServerName `
-            -Location $_VMFolder `
-            -Template $_Template `
-            -OSCustomizationSpec $_CustomizationSpec `
-            -DiskStorageFormat $vCenterDiskType `
-            -Datastore $_Datastore.Name `
-            -Verbose:$false `
-            -ErrorAction SilentlyContinue
-    } else {
-        VMware.VimAutomation.Core\New-VM `
-            -ResourcePool $_VMHost.Name `
-            -Name $ServerName `
-            -Template $_Template `
-            -OSCustomizationSpec $_CustomizationSpec `
-            -DiskStorageFormat $vCenterDiskType `
-            -Datastore $_Datastore.Name `
-            -Verbose:$false `
-            -ErrorAction SilentlyContinue
+        $NewVMSplat += @{
+            Location = $_VMFolder
+        }
     }
 
-    Write-Verbose ('{0}: VM [{1}] Created!' -f (get-date).ToString(),$ServerName)
+    if ($UseContentLibrary) {
+        $NewVMSplat += @{
+            ContentLibraryItem = $_Template.Name
+        }
+    } else {
+        $NewVMSplat += @{
+            Template = $_Template.Name
+            OSCustomizationSpec = $_CustomizationSpec
+        }
+    }
+    $_VM = VMware.VimAutomation.Core\New-VM @NewVMSplat -Verbose:$false
+    Write-Verbose ('{0}: VM [{1}] Created! `n {2}' -f (get-date).ToString(),$ServerName,($NewVMSplat | Out-String))
 
     $_VM = VMware.VimAutomation.Core\Get-VM $ServerName -Verbose:$false
+
+    if ($UseContentLibrary) {
+        $_VM | Set-VM `
+            -OSCustomizationSpec $_CustomizationSpec `
+            -Verbose:$false `
+            -ErrorAction SilentlyContinue `
+            -Confirm:$false
+    }
+
     $_VM | VMware.VimAutomation.Core\Set-VM `
         -NumCPU $ServerNumberofCPUs `
         -MemoryGB $ServerMemoryGB `
