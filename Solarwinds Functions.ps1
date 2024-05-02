@@ -50,7 +50,8 @@ function Invoke-OrionAPIQuery {
 }
 #EndRegion
 
-function Get-EntityFields {
+function Get-OrionEntityFields {
+    [Alias('Get-EntityFields')]
     Param(
         [String]$OrionServer,
         [Int]$OrionAPIPort = 17774,
