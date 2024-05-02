@@ -19,34 +19,24 @@ function Set-TLSValidationBypass {
         return $false
     }
 }
-#EndRegion
 
-function Get-EntityFields {
-    Param(
+function Invoke-OrionAPIQuery {
+    param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [String]$OrionAPIPort,
         [pscredential]$SWISCredentials,
-        [String]$EntityName = 'Orion.Nodes'
+        [String]$Query
     )
 
-    #Build Query
-    $Query = ("Select Name,Type,IsMetric,Units,MaxValue,MinValue,Values,IsNavigable,IsKey,IsNullable,IsInherited,IsInjected,IsSortable,GroupBy,FilterBy,CanCreate,CanRead,CanUpdate,Events,Summary,IsObsolete,ObsolescenceReason,IsInternal,EntityName,DisplayName,Description,InstanceType,Uri,InstanceSiteId from metadata.property where entityname='{0}'" -f $EntityName)
-    
-    #Build URI Request
     [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
 
-    #Build Header
-    $Headers = @{
-        Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-    }
-
-    #Build REST Variables
-    $splat = @{
+    $Splat = @{
         Method = 'Get'
-        Uri = $URI.Uri
-        Credential = $SWISCredentials
-        Headers = $Headers
-        Verbose = $false
+        URI = $URI.Uri
+        Headers = @{
+            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
+        }
+        Verbose = $False
     }
 
     if (-Not (Set-TLSValidationBypass)) {
@@ -54,9 +44,31 @@ function Get-EntityFields {
         $Splat += @{SkipCertificateCheck = $true}
     }
 
-    $Response = Invoke-RestMethod @splat
+    $Response = Invoke-RestMethod @Splat
 
     return ($Response.Results)
+}
+#EndRegion
+
+function Get-EntityFields {
+    Param(
+        [String]$OrionServer,
+        [Int]$OrionAPIPort = 17774,
+        [pscredential]$SWISCredentials,
+        [String]$EntityName = 'Orion.Nodes'
+    )
+
+    #Build Query
+    $Query = ("Select Name,Type,IsMetric,Units,MaxValue,MinValue,Values,IsNavigable,IsKey,IsNullable,IsInherited,IsInjected,IsSortable,GroupBy,FilterBy,CanCreate,CanRead,CanUpdate,Events,Summary,IsObsolete,ObsolescenceReason,IsInternal,EntityName,DisplayName,Description,InstanceType,Uri,InstanceSiteId from metadata.property where entityname='{0}'" -f $EntityName)
+
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
+
+    Return $Response
 }
 
 Function Get-OrionNode {
@@ -89,30 +101,14 @@ Function Get-OrionNode {
     }
     
     if ($Query) {
-        [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+        $Response = Invoke-OrionAPIQuery `
+            -OrionServer $OrionServer `
+            -OrionAPIPort $OrionAPIPort `
+            -SWISCredentials $SWISCredentials `
+            -Query $Query `
+            -ErrorAction SilentlyContinue
 
-        $Headers = @{
-            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-        }
-
-        $Splat = @{
-            Method = 'Get'
-            URI = $URI.Uri
-            Credential = $SWISCredentials
-            Headers = $Headers
-            Verbose = $False
-        }
-
-        if ($PSEdition -ne 'Desktop') {
-            $Splat += @{
-                SkipCertificateCheck = $true
-            }
-        }
-
-        $Response = Invoke-RestMethod @Splat
-    
-        return ($Response.Results)
-    
+        Return $Response
     } else {
         Write-Error ("Invalid Query created [HOSTNAME: {0}] or [IPADDRESS: {1}]" -f $Hostname,$IPAddress)
     }
@@ -121,7 +117,7 @@ Function Get-OrionNode {
 Function Get-OrionContainer {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$ContainerName,
         [switch]$ALL,
@@ -139,30 +135,14 @@ Function Get-OrionContainer {
     }
 
     if ($Query) {
-        [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+        $Response = Invoke-OrionAPIQuery `
+            -OrionServer $OrionServer `
+            -OrionAPIPort $OrionAPIPort `
+            -SWISCredentials $SWISCredentials `
+            -Query $Query `
+            -ErrorAction SilentlyContinue
 
-        $Headers = @{
-            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-        }
-
-        $Splat = @{
-            Method = 'Get'
-            URI = $URI.Uri
-            Credential = $SWISCredentials
-            Headers = $Headers
-            Verbose = $False
-        }
-
-        if ($PSEdition -ne 'Desktop') {
-            $Splat += @{
-                SkipCertificateCheck = $true
-            }
-        }
-
-        $Response = Invoke-RestMethod @Splat
-    
-        return ($Response.Results)
-    
+        Return $Response
     } else {
         Write-Error ("Invalid Query created [HOSTNAME: {0}] or [IPADDRESS: {1}]" -f $Hostname,$IPAddress)
     }
@@ -171,7 +151,7 @@ Function Get-OrionContainer {
 function Get-OrionContainerMembers {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$ContainerName,
         [String]$ContainerId,
@@ -192,30 +172,14 @@ function Get-OrionContainerMembers {
     }
 
     if ($Query) {
-        [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+        $Response = Invoke-OrionAPIQuery `
+            -OrionServer $OrionServer `
+            -OrionAPIPort $OrionAPIPort `
+            -SWISCredentials $SWISCredentials `
+            -Query $Query `
+            -ErrorAction SilentlyContinue
 
-        $Headers = @{
-            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-        }
-
-        $Splat = @{
-            Method = 'Get'
-            URI = $URI.Uri
-            Credential = $SWISCredentials
-            Headers = $Headers
-            Verbose = $False
-        }
-
-        if ($PSEdition -ne 'Desktop') {
-            $Splat += @{
-                SkipCertificateCheck = $true
-            }
-        }
-
-        $Response = Invoke-RestMethod @Splat
-    
-        return ($Response.Results)
-    
+        Return $Response
     } else {
         Write-Error ("Invalid Query created [HOSTNAME: {0}] or [IPADDRESS: {1}]" -f $Hostname,$IPAddress)
     }
@@ -335,36 +299,20 @@ function Add-OrionNodeInterfaces {
 function Get-OrionCredential {
     Param(
         [String]$OrionServer,
-        [String]$OrionAPIPort = 17778,
+        [String]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials
     )
 
     $Query = "SELECT TOP 1000 ID, Name, Description, CredentialType, CredentialOwner, DisplayName, InstanceType, Uri, InstanceSiteId FROM Orion.Credential"
     
-    [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
 
-    $Splat = @{
-        Method = 'Get'
-        URI = $URI.Uri
-        Credential = $SWISCredentials
-        Headers = $Headers
-        Verbose = $False
-    }
-
-    if (-Not (Set-TLSValidationBypass)) {
-        #Add Skip Certificate Check to REST Variables
-        $Splat += @{SkipCertificateCheck = $true}
-    }
-
-    $Response = Invoke-RestMethod `
-        -Method Get `
-        -Uri $URI.Uri `
-        -Credential $SWISCredentials `
-        -Headers @{
-            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-        }
-
-    return ($Response.Results)
+    return ($Response)
 }
 
 function Add-OrionNode {
@@ -495,26 +443,16 @@ function Get-OrionNodeSettings {
         [Int]$NodeID
     )
 
-    $Query = "SELECT TOP 1000 NodeID, SettingName, SettingValue, NodeSettingID FROM Orion.NodeSettings where NodeID = '$NodeID'"
+    $Query = "SELECT NodeID, SettingName, SettingValue, NodeSettingID FROM Orion.NodeSettings where NodeID = '$NodeID'"
     
-    [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
-
-    $Splat = @{
-        Method = 'Get'
-        URI = $URI.Uri
-        Credential = $SWISCredentials
-        Headers = $Headers
-        Verbose = $False
-    }
-
-    if (-Not (Set-TLSValidationBypass)) {
-        #Add Skip Certificate Check to REST Variables
-        $Splat += @{SkipCertificateCheck = $true}
-    }
-
-    $Response = Invoke-RestMethod @Splat
-
-    return ($Response.Results)
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
+    
+    return $Response
 }
 
 function Get-OrionPollers {
@@ -554,26 +492,16 @@ function Get-OrionPollingEngines {
         [pscredential]$SWISCredentials
     )
 
-    $Query = "SELECT TOP 1000 EngineID, ServerName, IP, ServerType, PrimaryServers, KeepAlive, FailOverActive, SysLogKeepAlive, TrapsKeepAlive, Restart, Elements, Nodes, Interfaces, Volumes, Pollers, MaxPollsPerSecond, MaxStatPollsPerSecond, NodePollInterval, InterfacePollInterval, VolumePollInterval, NodeStatPollInterval, InterfaceStatPollInterval, VolumeStatPollInterval, LicensedElements, SerialNumber, LicenseKey, StartTime, CompanyName, CustomerID, Evaluation, EvalDaysLeft, PackageName, EngineVersion, WindowsVersion, ServicePack, AvgCPUUtil, MemoryUtil, PollingCompletion, StatPollInterval, BusinessLayerPort, FIPSModeEnabled, MinutesSinceKeepAlive, MinutesSinceFailOverActive, MinutesSinceSysLogKeepAlive, MinutesSinceTrapsKeepAlive, MinutesSinceRestart, MinutesSinceStartTime, DisplayName, MasterEngineID, IsFree FROM Orion.Engines"
+    $Query = "SELECT EngineID, ServerName, IP, ServerType, PrimaryServers, KeepAlive, FailOverActive, SysLogKeepAlive, TrapsKeepAlive, Restart, Elements, Nodes, Interfaces, Volumes, Pollers, MaxPollsPerSecond, MaxStatPollsPerSecond, NodePollInterval, InterfacePollInterval, VolumePollInterval, NodeStatPollInterval, InterfaceStatPollInterval, VolumeStatPollInterval, LicensedElements, SerialNumber, LicenseKey, StartTime, CompanyName, CustomerID, Evaluation, EvalDaysLeft, PackageName, EngineVersion, WindowsVersion, ServicePack, AvgCPUUtil, MemoryUtil, PollingCompletion, StatPollInterval, BusinessLayerPort, FIPSModeEnabled, MinutesSinceKeepAlive, MinutesSinceFailOverActive, MinutesSinceSysLogKeepAlive, MinutesSinceTrapsKeepAlive, MinutesSinceRestart, MinutesSinceStartTime, DisplayName, MasterEngineID, IsFree FROM Orion.Engines"
 
-    [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+    $response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
 
-    $Splat = @{
-        Method = 'Get'
-        URI = $URI.Uri
-        Credential = $SWISCredentials
-        Headers = $Headers
-        Verbose = $False
-    }
-
-    if (-Not (Set-TLSValidationBypass)) {
-        #Add Skip Certificate Check to REST Variables
-        $Splat += @{SkipCertificateCheck = $true}
-    }
-
-    $Response = Invoke-RestMethod @Splat
-
-    return ($Response.Results)
+    return ($Response)
 }
 
 function Start-OrionNodeResourceList {
@@ -692,30 +620,14 @@ function Get-OrionNodeVolumes {
 
     $Query = ("SELECT NodeID, URI, Status, StatusLED, VolumeID, Icon, Index, Caption, PollInterval, StatCollection, RediscoveryInterval, StatusIcon, Type, Size, Responding, FullName, LastSync, VolumePercentUsed, VolumeAllocationFailuresThisHour, VolumeIndex, VolumeTypeID, VolumeType, VolumeDescription, VolumeSize, VolumeSpaceUsed, VolumeAllocationFailuresToday, VolumeResponding, VolumeSpaceAvailable, VolumeTypeIcon, OrionIdPrefix, OrionIdColumn, DiskQueueLength, DiskTransfer, DiskReads, DiskWrites, DisplayName, TotalDiskIOPS, VolumePercentAvailable, MinutesSinceLastSync, DetailsUrl, SkippedPollingCycles, VolumeSpaceAvailableExp, NextPoll, NextRediscovery, DeviceId, DiskSerialNumber, InterfaceType, SCSITargetId, SCSILunId, SCSIPortId, SCSIControllerId, SCSIPortOffset FROM Orion.Volumes WHERE NodeID = '{0}'" -f $NodeID)
 
-    [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Query?query=$Query"
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
 
-    $Splat = @{
-        Method = 'Get'
-        URI = $URI.Uri
-        Credential = $SWISCredentials
-        Headers = $Headers
-        Verbose = $False
-    }
-
-    if (-Not (Set-TLSValidationBypass)) {
-        #Add Skip Certificate Check to REST Variables
-        $Splat += @{SkipCertificateCheck = $true}
-    }
-
-    $Response = Invoke-RestMethod `
-        -Method Get `
-        -Uri $URI.Uri `
-        -Credential $SWISCredentials `
-        -Headers @{
-            Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
-        }
-
-    return ($Response.Results)
+    Return $Response
 }
 
 function Start-OrionNodePolling {
@@ -786,6 +698,46 @@ function Remove-OrionNodeVolume {
         -Headers @{
             Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))
         }
+
+    return $Response
+}
+
+function Get-OrionNodeCustomProperties {
+    param(
+        [String]$OrionServer,
+        [String]$OrionAPIPort = 17774,
+        [pscredential]$SWISCredentials,
+        [String]$NodeID
+    )
+
+    $Query = "SELECT NodeID, Address, AssetTag, BusinessUnit, City, Comments, Country, DevicePOrV, DeviceType, Environment, GroupSiteCode, InServiceDate, Latitude, LegacyCompanyName, Longitude, PONumber, PostalCode, PurchaseDate, PurchasePrice, Region, SerialNumber, SiteCode, SLA, State, ZipCode FROM Orion.NodesCustomProperties WHERE NodeID = '$NodeID'"
+
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
+
+    return $Response
+}
+
+function Get-OrionNodeChildStatusDetail {
+    param(
+        [String]$OrionServer,
+        [String]$OrionAPIPort = 17774,
+        [pscredential]$SWISCredentials,
+        [String]$NodeID
+    )
+
+    $Query = "SELECT NodeID, Name, EntityType, Status, StatusIcon, DetailsUrl, StatusRanking FROM Orion.NodeChildStatusDetail WHERE NodeID = '$NodeID'"
+
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
 
     return $Response
 }
