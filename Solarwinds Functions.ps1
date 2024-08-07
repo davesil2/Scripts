@@ -319,7 +319,7 @@ function Get-OrionCredential {
 function Add-OrionNode {
     Param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$PollerID,
         [String]$IPAddress,
@@ -332,6 +332,8 @@ function Add-OrionNode {
 
     [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Create/Orion.Nodes"
 
+    $Headers = @{Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))}
+
     $Body = [pscustomObject]@{
         EngineID = $PollerID
         IPAddress = $IPAddress
@@ -343,11 +345,10 @@ function Add-OrionNode {
     $Splat = @{
         Method = 'Post'
         URI = $URI.Uri
-        Credential = $SWISCredentials
         Headers = $Headers
         Verbose = $False
         Body = ($Body | ConvertTo-Json)
-        ContetType = 'application/json'
+        ContentType = 'application/json'
     }
 
     if (-Not (Set-TLSValidationBypass)) {
@@ -739,6 +740,38 @@ function Get-OrionNodeChildStatusDetail {
         -SWISCredentials $SWISCredentials `
         -Query $Query `
         -ErrorAction SilentlyContinue
+
+    return $Response
+}
+
+function Get-OrionGetFirstAvailableIP {
+    Param(
+        [String]$OrionServer,
+        [String]$OrionAPIPort = 17774,
+        [pscredential]$SWISCredentials,
+        [String]$SubnetAddress,
+        [String]$SubnetCIDR
+    )
+
+    $body = [pscustomobject]@{
+        subnetAddress = $SubnetAddress
+        subnetCIDR = $SubnetCIDR
+    }
+
+    $Headers = @{Authorization = ("Basic {0}" -f [system.convert]::ToBase64String([text.encoding]::UTF8.GetBytes($SWISCredentials.username + ":" + $SWISCredentials.GetNetworkCredential().password)))}
+
+    [System.UriBuilder]$URI = "https://$OrionServer`:$OrionAPIPort/Solarwinds/InformationService/v3/Json/Invoke/IPAM.SubnetManagement/GetFirstAvailableIp"
+
+    $Splat = @{
+        Method = 'Post'
+        URI = $URI.Uri
+        Headers = $Headers
+        Verbose = $False
+        Body = ($Body | ConvertTo-Json)
+        ContentType = 'application/json'
+    }
+
+    $Response = Invoke-RestMethod @Splat
 
     return $Response
 }
