@@ -215,6 +215,7 @@ function Disable-OrionNodeAlerts {
         Headers = $Headers
         Verbose = $False
         Body = ($Body | ConvertTo-Json)
+        ContentType = 'application/json'
     }
 
     if (-Not (Set-TLSValidationBypass)) {
