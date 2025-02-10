@@ -823,7 +823,7 @@ function Add-VMtoDomain {
             ValueFromPipelineByPropertyName=$true
         )]
         [boolean]
-        $TrustComputerforDelegation = $true,
+        $TrustComputerforDelegation = $false,
         
         #Ensure PSRemoting/WSMAN is enabled
         [Parameter(
