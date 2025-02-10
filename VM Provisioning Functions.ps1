@@ -524,7 +524,6 @@ function New-VMfromTemplate {
         Name = $ServerName
         DiskStorageFormat = $vCenterDiskType
         DataStore = $_Datastore.Name
-        Verbose = $false
         ErrorAction = 'silentlycontinue'
     }
     if ($_VMFolder) {
