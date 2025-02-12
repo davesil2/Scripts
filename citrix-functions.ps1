@@ -39,9 +39,17 @@ function Connect-CitrixRESTAPI {
         [parameter(Mandatory=$true)]
         [string]$ClientSecret,
         [parameter(Mandatory=$true)]
-        [string]$CustomerID
+        [string]$CustomerID,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12'
     )
 
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+    
     # generate uri for generating token
     [System.UriBuilder]$URI = ('https://{0}/cctrustoauth2/root/tokens/clients' -f $CloudURI)
 
@@ -144,8 +152,16 @@ function Get-CitrixMachineCatalog {
     Param(
         [string]$CloudURI = 'api-us.cloud.com',
         [Parameter(Mandatory=$true)]
-        [hashtable]$Headers
+        [hashtable]$Headers,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12'
     )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
     [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs' -f $CloudURI)
