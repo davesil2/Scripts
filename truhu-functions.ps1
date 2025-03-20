@@ -138,7 +138,7 @@ function Add-TruHuEmployee {
         [Parameter(Mandatory=$false)]
         [string]$RemoteID,
         [Parameter(Mandatory=$false)]
-        [hashtable]$Address = @{address1='n/a';city='n/a';state='n/a';zip='n/a'},
+        [hashtable]$Address = @{address1='';city='';state='';zip=''},
         [ValidateScript(
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
             ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
