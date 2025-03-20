@@ -6,8 +6,7 @@ function Get-TruHutoken {
         [String]$Password,
         [String]$GrantType = 'password',
         [ValidateScript(
-            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
-            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
         )]
         [string]$TLSVersion = 'Tls12'
     )
@@ -51,8 +50,7 @@ function Get-TruHuEmployees {
         [String]$CompanyID,
         $APIToken,
         [ValidateScript(
-            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
-            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
         )]
         [string]$TLSVersion = 'Tls12'
     )
@@ -140,8 +138,7 @@ function Add-TruHuEmployee {
         [Parameter(Mandatory=$false)]
         [hashtable]$Address = @{address1='';city='';state='';zip=''},
         [ValidateScript(
-            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
-            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
         )]
         [string]$TLSVersion = 'Tls12'
     )
@@ -218,8 +215,7 @@ function Update-TruHuEmployees {
         $APIToken,
         $Census,
         [ValidateScript(
-            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
-            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
         )]
         [string]$TLSVersion = 'Tls12'
     )
@@ -263,8 +259,7 @@ function Clear-TruHuEmployees {
         [Parameter(Mandatory=$false)]
         $FQDN = 'api.truhu.com',
         [ValidateScript(
-            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
-            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
         )]
         [string]$TLSVersion = 'Tls12'
     )
@@ -288,6 +283,125 @@ function Clear-TruHuEmployees {
         Method      = 'DELETE'
         Header      = $Headers
         URI         = $URI.Uri
+        ContentType = 'application/json'
+        ErrorAction = 'silentlyContinue'
+    }
+
+    $Result = Invoke-RestMethod @Parameters
+
+    if ($Result) {
+        return $Result
+    } else {
+        $parameters
+        throw '[ERROR] - '
+    }
+}
+
+function Update-TruHuEmployee {
+    Param(
+        [Parameter(Mandatory=$true)]
+        $APIToken,
+        [Parameter(Mandatory=$false)]
+        [String]$FQDN = 'api.truhu.com',
+        [Parameter(Mandatory=$true)]
+        [String]$CompanyID,
+        [Parameter(Mandatory=$false)]
+        [String]$FirstName,
+        [Parameter(Mandatory=$false)]
+        [String]$LastName,
+        [Parameter(Mandatory=$false)]
+        [String]$MiddleInitial,
+        [Parameter(Mandatory=$true)]
+        [String]$EmailAddress,
+        [Parameter(Mandatory=$false)]
+        [String]$CellPhone,
+        [Parameter(Mandatory=$false)]
+        [String[]]$Locations = @(),
+        [Parameter(Mandatory=$false)]
+        [String[]]$Departments = @(),
+        [Parameter(Mandatory=$false)]
+        [String]$Classification,
+        [Parameter(Mandatory=$false)]
+        [String]$Status,
+        [Parameter(Mandatory=$false)]
+        [String]$JobTitle,
+        [Parameter(Mandatory=$false)]
+        [String]$Language,
+        [Parameter(Mandatory=$false)]
+        [String]$EmployeeId,
+        [Parameter(Mandatory=$false)]
+        [String]$TimeZone,
+        [Parameter(Mandatory=$false)]
+        [hashtable]$ManagerDetails = @{EmailAddress=$null},
+        [Parameter(Mandatory=$false)]
+        [String]$DateOfHire,
+        [Parameter(Mandatory=$false)]
+        [hashtable]$TerminationDetails = @{Date=$null;Type=$null},
+        [Parameter(Mandatory=$false)]
+        [String]$DateOfBirth,
+        [Parameter(Mandatory=$false)]
+        [String]$Gender,
+        [Parameter(Mandatory=$false)]
+        [String]$Ethnicity,
+        [Parameter(Mandatory=$false)]
+        [string]$RemoteID,
+        [Parameter(Mandatory=$false)]
+        [hashtable]$Address = @{address1='';city='';state='';zip=''},
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))}
+        )]
+        [string]$TLSVersion = 'Tls12'
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+    
+    # generate uri for generating token
+    [System.UriBuilder]$URI = ('https://{0}/Census' -f $FQDN)
+
+    $Headers = @{
+        Authorization   = ('Bearer {0}' -f $APIToken.access_token)
+        Accept          = 'application/json'
+    }
+
+    # get all users
+    $Census = Get-TruHuEmployees `
+        -FQDN $FQDN `
+        -CompanyID $CompanyID `
+        -APIToken $APIToken
+
+    $Census.ExternalSystem = 1
+
+    # get specific user refereced by email address
+    $employee = $Census.Employees | Where-Object {$_.EmailAddress -eq $EmailAddress}
+
+    # update changed values
+    if ($FirstName) {$employee.FirstName = $FirstName}
+    if ($LastName) {$employee.LastName = $LastName}
+    if ($MiddleInitial) {$employee.MiddleInitial = $MiddleInitial}
+    if ($CellPhone) {$employee.CellPhone = $CellPhone}
+    if ($Locations) {$employee.Locations = $Locations}
+    if ($Departments) {$employee.Departments = $Departments}
+    if ($Classification) {$employee.Classification = $Classification}
+    if ($Status) {$employee.Status = $Status}
+    if ($JobTitle) {$employee.JobTitle = $JobTitle}
+    if ($Language) {$employee.Language = $Language}
+    if ($EmployeeId) {$employee.EmployeeId = $EmployeeId}
+    if ($TimeZone) {$employee.TimeZone = $TimeZone}
+    if ($ManagerDetails) {$employee.ManagerDetails = $ManagerDetails}
+    if ($DateOfHire) {$employee.DateOfHire = $DateOfHire}
+    if ($TerminationDetails) {$employee.TerminationDetails = $TerminationDetails}
+    if ($DateOfBirth) {$employee.DateOfBirth = $DateOfBirth}
+    if ($Gender) {$employee.Gender = $Gender}
+    if ($Ethnicity) {$employee.Ethnicity = $Ethnicity}
+    if ($Address) {$employee.Address = $Address}
+
+    # set parameters for rest call
+    $Parameters = @{
+        Method      = 'POST'
+        Header      = $Headers
+        URI         = $URI.Uri
+        Body        = (convertto-json $Census -depth 10)
         ContentType = 'application/json'
         ErrorAction = 'silentlyContinue'
     }
