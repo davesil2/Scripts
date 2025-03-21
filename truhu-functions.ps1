@@ -375,43 +375,48 @@ function Update-TruHuEmployee {
     # get specific user refereced by email address
     $employee = $Census.Employees | Where-Object {$_.EmailAddress -eq $EmailAddress}
 
+    # ensure update status is blank
+    $Update = $null
+
     # update changed values
-    if ($FirstName -and $employee.FirstName -ne $FirstName) {$employee.FirstName = $FirstName}
-    if ($LastName -and $employee.LastName -ne $LastName) {$employee.LastName = $LastName}
-    if ($MiddleInitial -and $employee.MiddleInitial -ne $MiddleInitial) {$employee.MiddleInitial = $MiddleInitial}
-    if ($CellPhone -and $employee.CellPhone -ne $CellPhone) {$employee.CellPhone = $CellPhone}
-    if ($Locations -and $employee.Locations -ne $Locations) {$employee.Locations = $Locations}
-    if ($Departments -and $employee.Departments -ne $Departments) {$employee.Departments = $Departments}
-    if ($Classification -and $employee.Classification -ne $Classification) {$employee.Classification = $Classification}
-    if ($Status -and $employee.Status -ne $Status) {$employee.Status = $Status}
-    if ($JobTitle -and $employee.JobTitle -ne $JobTitle) {$employee.JobTitle = $JobTitle}
-    if ($Language -and $employee.Language -ne $Language) {$employee.Language = $Language}
-    if ($EmployeeId -and $employee.EmployeeId -ne $EmployeeId) {$employee.EmployeeId = $EmployeeId}
-    if ($TimeZone -and $employee.TimeZone -ne $TimeZone) {$employee.TimeZone = $TimeZone}
-    if ($ManagerDetails -and $employee.ManagerDetails -ne $ManagerDetails) {$employee.ManagerDetails = $ManagerDetails}
-    if ($DateOfHire -and $employee.DateOfHire -ne $DateOfHire) {$employee.DateOfHire = $DateOfHire}
-    if ($TerminationDetails -and $employee.TerminationDetails -ne $TerminationDetails) {$employee.TerminationDetails = $TerminationDetails}
-    if ($DateOfBirth -and $employee.DateOfBirth -ne $DateOfBirth) {$employee.DateOfBirth = $DateOfBirth}
-    if ($Gender -and $employee.Gender -ne $Gender) {$employee.Gender = $Gender}
-    if ($Ethnicity -and $employee.Ethnicity -ne $Ethnicity) {$employee.Ethnicity = $Ethnicity}
-    if ($Address -and $employee.Address -ne $Address) {$employee.Address = $Address}
+    if ($FirstName -and $employee.FirstName -ne $FirstName) {$employee.FirstName = $FirstName; $Update = $true}
+    if ($LastName -and $employee.LastName -ne $LastName) {$employee.LastName = $LastName; $Update = $true}
+    if ($MiddleInitial -and $employee.MiddleInitial -ne $MiddleInitial) {$employee.MiddleInitial = $MiddleInitial; $Update = $true}
+    if ($CellPhone -and $employee.CellPhone -ne $CellPhone) {$employee.CellPhone = $CellPhone; $Update = $true}
+    if ($Locations -and $employee.Locations -ne $Locations) {$employee.Locations = $Locations; $Update = $true}
+    if ($Departments -and $employee.Departments -ne $Departments) {$employee.Departments = $Departments; $Update = $true}
+    if ($Classification -and $employee.Classification -ne $Classification) {$employee.Classification = $Classification; $Update = $true}
+    if ($Status -and $employee.Status -ne $Status) {$employee.Status = $Status; $Update = $true}
+    if ($JobTitle -and $employee.JobTitle -ne $JobTitle) {$employee.JobTitle = $JobTitle; $Update = $true}
+    if ($Language -and $employee.Language -ne $Language) {$employee.Language = $Language; $Update = $true}
+    if ($EmployeeId -and $employee.EmployeeId -ne $EmployeeId) {$employee.EmployeeId = $EmployeeId; $Update = $true}
+    if ($TimeZone -and $employee.TimeZone -ne $TimeZone) {$employee.TimeZone = $TimeZone; $Update = $true}
+    if ($ManagerDetails -and $employee.ManagerDetails -ne $ManagerDetails) {$employee.ManagerDetails = $ManagerDetails; $Update = $true}
+    if ($DateOfHire -and $employee.DateOfHire -ne $DateOfHire) {$employee.DateOfHire = $DateOfHire; $Update = $true}
+    if ($TerminationDetails -and $employee.TerminationDetails -ne $TerminationDetails) {$employee.TerminationDetails = $TerminationDetails; $Update = $true}
+    if ($DateOfBirth -and $employee.DateOfBirth -ne $DateOfBirth) {$employee.DateOfBirth = $DateOfBirth; $Update = $true}
+    if ($Gender -and $employee.Gender -ne $Gender) {$employee.Gender = $Gender; $Update = $true}
+    if ($Ethnicity -and $employee.Ethnicity -ne $Ethnicity) {$employee.Ethnicity = $Ethnicity; $Update = $true}
+    if ($Address -and $employee.Address -ne $Address) {$employee.Address = $Address; $Update = $true}
 
-    # set parameters for rest call
-    $Parameters = @{
-        Method      = 'POST'
-        Header      = $Headers
-        URI         = $URI.Uri
-        Body        = (convertto-json $Census -depth 10)
-        ContentType = 'application/json'
-        ErrorAction = 'silentlyContinue'
-    }
+    if ($Update) {
+        # set parameters for rest call
+        $Parameters = @{
+            Method      = 'POST'
+            Header      = $Headers
+            URI         = $URI.Uri
+            Body        = (convertto-json $Census -depth 10)
+            ContentType = 'application/json'
+            ErrorAction = 'silentlyContinue'
+        }
 
-    $Result = Invoke-RestMethod @Parameters
+        $Result = Invoke-RestMethod @Parameters
 
-    if ($Result) {
-        return $Result
-    } else {
-        $parameters
-        throw '[ERROR] - '
+        if ($Result) {
+            return $Result
+        } else {
+            $parameters
+            throw '[ERROR] - '
+        }
     }
 }
