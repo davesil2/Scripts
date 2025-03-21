@@ -376,25 +376,25 @@ function Update-TruHuEmployee {
     $employee = $Census.Employees | Where-Object {$_.EmailAddress -eq $EmailAddress}
 
     # update changed values
-    if ($FirstName) {$employee.FirstName = $FirstName}
-    if ($LastName) {$employee.LastName = $LastName}
-    if ($MiddleInitial) {$employee.MiddleInitial = $MiddleInitial}
-    if ($CellPhone) {$employee.CellPhone = $CellPhone}
-    if ($Locations) {$employee.Locations = $Locations}
-    if ($Departments) {$employee.Departments = $Departments}
-    if ($Classification) {$employee.Classification = $Classification}
-    if ($Status) {$employee.Status = $Status}
-    if ($JobTitle) {$employee.JobTitle = $JobTitle}
-    if ($Language) {$employee.Language = $Language}
-    if ($EmployeeId) {$employee.EmployeeId = $EmployeeId}
-    if ($TimeZone) {$employee.TimeZone = $TimeZone}
-    if ($ManagerDetails) {$employee.ManagerDetails = $ManagerDetails}
-    if ($DateOfHire) {$employee.DateOfHire = $DateOfHire}
-    if ($TerminationDetails) {$employee.TerminationDetails = $TerminationDetails}
-    if ($DateOfBirth) {$employee.DateOfBirth = $DateOfBirth}
-    if ($Gender) {$employee.Gender = $Gender}
-    if ($Ethnicity) {$employee.Ethnicity = $Ethnicity}
-    if ($Address) {$employee.Address = $Address}
+    if ($FirstName -and $employee.FirstName -ne $FirstName) {$employee.FirstName = $FirstName}
+    if ($LastName -and $employee.LastName -ne $LastName) {$employee.LastName = $LastName}
+    if ($MiddleInitial -and $employee.MiddleInitial -ne $MiddleInitial) {$employee.MiddleInitial = $MiddleInitial}
+    if ($CellPhone -and $employee.CellPhone -ne $CellPhone) {$employee.CellPhone = $CellPhone}
+    if ($Locations -and $employee.Locations -ne $Locations) {$employee.Locations = $Locations}
+    if ($Departments -and $employee.Departments -ne $Departments) {$employee.Departments = $Departments}
+    if ($Classification -and $employee.Classification -ne $Classification) {$employee.Classification = $Classification}
+    if ($Status -and $employee.Status -ne $Status) {$employee.Status = $Status}
+    if ($JobTitle -and $employee.JobTitle -ne $JobTitle) {$employee.JobTitle = $JobTitle}
+    if ($Language -and $employee.Language -ne $Language) {$employee.Language = $Language}
+    if ($EmployeeId -and $employee.EmployeeId -ne $EmployeeId) {$employee.EmployeeId = $EmployeeId}
+    if ($TimeZone -and $employee.TimeZone -ne $TimeZone) {$employee.TimeZone = $TimeZone}
+    if ($ManagerDetails -and $employee.ManagerDetails -ne $ManagerDetails) {$employee.ManagerDetails = $ManagerDetails}
+    if ($DateOfHire -and $employee.DateOfHire -ne $DateOfHire) {$employee.DateOfHire = $DateOfHire}
+    if ($TerminationDetails -and $employee.TerminationDetails -ne $TerminationDetails) {$employee.TerminationDetails = $TerminationDetails}
+    if ($DateOfBirth -and $employee.DateOfBirth -ne $DateOfBirth) {$employee.DateOfBirth = $DateOfBirth}
+    if ($Gender -and $employee.Gender -ne $Gender) {$employee.Gender = $Gender}
+    if ($Ethnicity -and $employee.Ethnicity -ne $Ethnicity) {$employee.Ethnicity = $Ethnicity}
+    if ($Address -and $employee.Address -ne $Address) {$employee.Address = $Address}
 
     # set parameters for rest call
     $Parameters = @{
