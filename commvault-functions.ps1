@@ -37,7 +37,23 @@ function New-CommVaultAPIToken {
         ContentType             = 'application/json'
         ErrorAction             = 'silentlyContinue'
         Headers                 = $Headers
-        SkipCertificateCheck    = $ignoreCertErrors.ToBool()
+    }
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
+    } else {
+        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
+            [bool] CheckValidationResult (
+                [System.Net.ServicePoint]$srvPoint,
+                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
+                [System.Net.WebRequest]$request,
+                [int]$certificateProblem
+            ) {
+                return $true
+            }
+        }
+    
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
     }
 
     $result = Invoke-RestMethod @Parameters
@@ -179,7 +195,7 @@ function Get-CommVaultReportOutput {
     write-host $uri.uri
 
     $Headers = @{
-        authtoken   = ('Bearer {0}' -f $APIToken)
+        authtoken   = $APIToken
         accept      = 'application/json'
     }
 
