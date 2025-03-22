@@ -240,8 +240,6 @@ function Get-CommVaultReportOutput {
 
     $URI.Query = $QueryString
 
-    write-host $uri.uri
-
     $Headers = @{
         authtoken   = $APIToken
         accept      = 'application/json'
