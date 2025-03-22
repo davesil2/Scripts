@@ -179,7 +179,7 @@ function Get-CommVaultReportOutput {
     write-host $uri.uri
 
     $Headers = @{
-        authtoken   = $APIToken.access_token
+        authtoken   = ('Bearer {0}' -f $APIToken)
         accept      = 'application/json'
     }
 
