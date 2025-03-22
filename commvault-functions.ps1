@@ -179,12 +179,12 @@ function Get-CommVaultReportOutput {
     write-host $uri.uri
 
     $Headers = @{
-        authtoken   = $APIToken
+        authtoken   = $APIToken.access_token
         accept      = 'application/json'
     }
 
     $Parameters = @{
-        SkipCertificateCheck    = $ignoreCertErrors
+        SkipCertificateCheck    = $ignoreCertErrors.ToBool()
         Method                  = 'Post'
         URI                     = $uri.Uri
         ErrorAction             = 'silentlycontinue'
