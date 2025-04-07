@@ -115,6 +115,147 @@ function Connect-CitrixRESTAPI {
     
 }
 
+function Get-CitrixHypervisors {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [String]$HypervisorNameOrID,
+        [string]$CloudURI = "api-us.cloud.com",
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/hypervisors' -f $CloudURI)
+
+    if ($HypervisorNameOrID) {
+        $URI.Path += ('/{0}' -f $HypervisorNameOrID)
+    }
+
+    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
+
+    # build parameters for splat into invoke-restmethod
+    $parameters = @{
+        Method      = 'GET'
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+    }
+
+    $Hypervisors = Invoke-RestMethod @parameters
+
+    if ($Hypervisors) {
+        return $Hypervisors.Items
+    } else {
+        throw "ERROR: no data received, check headers"
+    }
+}
+
+function Get-CitrixMachines {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [Parameter(Mandatory=$false)]
+        [string]$MachineNameOrID,
+        [int]$limit = 249,
+        [string]$CloudURI = "api-us.cloud.com",
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/Machines' -f $CloudURI)
+
+    if ($MachineNameOrID) {
+        $URI.Path += ('/{0}' -f $MachineNameOrID)
+    }
+
+    # build parameters for splat into invoke-restmethod
+    $parameters = @{
+        Method      = 'GET'
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+    }
+
+    $Result = Invoke-RestMethod @parameters
+
+    $Machines = $Result.Items
+
+    While ($Result.ContinuationToken -and $result.items.count -gt 0) {
+        $URI.Query = ('?continuationToken={0}' -f $Result.continuationToken)
+        $Parameters['Uri'] = $Uri.Uri
+        $Result = Invoke-RestMethod @parameters
+        $Machines += $result.items
+    }
+
+    if ($Machines) {
+        return $Machines
+    } else {
+        throw "[ERROR] - no data received, check headers"
+    }
+}
+
+function Remove-CitrixMachine {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [Parameter(Mandatory=$True)]
+        [string]$MachineNameOrID,
+        [string]$CloudURI = "api-us.cloud.com",
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/Machines/{1}' -f $CloudURI,$MachineNameOrID)
+
+    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
+
+    # build parameters for splat into invoke-restmethod
+    $parameters = @{
+        Method      = 'DELETE'
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+    }
+
+    $Result = Invoke-RestMethod @parameters
+
+    if ($Result) {
+        return $Result
+    } else {
+        throw ('[ERROR] - a problem occured deleting the machine')
+    }
+}
+
 <#
 .SYNOPSIS
 Obtain a list of Machine Catalogs from Citrix Cloud
@@ -148,7 +289,7 @@ Get-CitrixMachineCatalog `
     -Headers $Headers
 
 #>
-function Get-CitrixMachineCatalog {
+function Get-CitrixMachineCatalogs {
     Param(
         [string]$CloudURI = 'api-us.cloud.com',
         [Parameter(Mandatory=$true)]
@@ -157,7 +298,8 @@ function Get-CitrixMachineCatalog {
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
             ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
         )]
-        [string]$TLSVersion = 'Tls12'
+        [string]$TLSVersion = 'Tls12',
+        [switch]$Async
     )
 
     # set TLS version
@@ -165,6 +307,8 @@ function Get-CitrixMachineCatalog {
 
     # build URI for use to access machine catalog
     [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs' -f $CloudURI)
+
+    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
 
     # build parameters for splat into invoke-restmethod
     $parameters = @{
@@ -185,4 +329,219 @@ function Get-CitrixMachineCatalog {
         # throw an error if no output is created
         throw 'ERROR: no response recieved, check header output, credentials and customerid'
     }
+}
+
+function Add-CitrixMachineCatalogMachine {
+    Param(
+        [string]$CloudURI = 'api-us.cloud.com',
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [Parameter(Mandatory=$true, HelpMessage='Domain Computer value domain\computer or SID')]
+        [String]$MachineNameOrID,
+        [Parameter(Mandatory=$true, HelpMessage='Catalog name or unique ID')]
+        [String]$CatalogNameOrID,
+        [Parameter(Mandatory=$true, HelpMessage='VM Unique ID')]
+        [String]$HostedMachineID,
+        [Parameter(Mandatory=$true, HelpMessage='Hypervisor Connection Name')]
+        [String]$HypervisorConnection,
+        [Parameter(Mandatory=$true, HelpMessage='Single or Multiple Users')]
+        [String]$AssignedUsers,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs{1}/Machines' -f $CloudURI,$CatalogNameOrID)
+
+    # configure async query value
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $URI.Query = $Query.ToString()
+ 
+    # configure settings to send for body
+    $Body = @{
+        MachineName             = $MachineNameOrID
+        AssignedUsers           = $AssignedUsers
+        HostedMachineId         = $HostedMachineID
+        HypervisorConnection    = $HypervisorConnection
+    }
+
+    # build parameters for splat into invoke-restmethod
+    $parameters = @{
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+        Body        = $Body
+    }
+
+    $result = Invoke-RestMethod @parameters
+
+    if ($result) {
+        return $result
+    }
+}
+
+function Remove-CitrixMachineCatalogMachine {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [String]$CatalogNameOrID,
+        [Parameter(Mandatory=$true)]
+        [String]$MachineNameOrID,
+        [string]$CloudURI = 'api-us.cloud.com',
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$Async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines/{2}' -f $CloudURI,$CatalogNameOrID,$MachineNameOrID)
+
+    # configure async query value
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $URI.Query = $Query.ToString()
+
+    $Parameters = @{
+        Method      = 'DELETE'
+        URI         = $URI.Uri
+        Headers     = $Headers
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+    }
+
+    $Result = Invoke-RestMethod @Parameters
+
+    if ($Result) {
+        return $Result
+    } else {
+        throw '[ERROR] - '
+    }
+}
+
+function Get-CitrixMachineCatalogMachines {
+    Param(
+
+    )
+}
+
+function Get-CitrixDeliveryGroups {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [string]$CloudURI = "api-us.cloud.com",
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups' -f $CloudURI,$DeliveryGroup,$Machine)
+    
+    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
+
+    # build parameters for splat into invoke-restmethod
+    $parameters = @{
+        Method      = 'GET'
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+    }
+
+    $DeliveryGroups = Invoke-RestMethod @parameters
+
+    if ($DeliveryGroups) {
+        return $DeliveryGroups.Items
+    } else {
+        throw "ERROR: no data received, check headers"
+    }
+}
+
+function Add-CitrixDeliveryGroupMachine {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [String]$DeliveryGroupNameOrID,
+        [Parameter(Mandatory=$true)]
+        [String]$MachineNameOrID,
+        [Paramter(Mandatory=$true)]
+        [String]$CatalogNameOrID
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines/{2}' -f $CloudURI,$CatalogNameOrID,$MachineNameOrID)
+
+    # configure async query value
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $URI.Query = $Query.ToString()
+
+    $body = @{
+        
+    }
+
+}
+
+function Remove-CitrixDeliveryGroupMachine {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [Parameter(Mandatory=$true)]
+        [string]$MachineName,
+        [Parameter(Mandatory=$true)]
+        [string]$DeliveryGroup,
+        [string]$CloudURI = "api-us.cloud.com",
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines/{2}?async={3}' -f $CloudURI,$DeliveryGroup,$Machine)
+    
+    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
+
+    $parameters = @{
+        Method      = 'DELETE'
+        ContentType = 'application/json'
+        UserAgent   = 'Mozilla/5.0'
+        ErrorAction = 'silentlyContinue'
+        Uri         = $URI.Uri
+        Headers     = $Headers
+    }
+
+    Invoke-RestMethod @parameters
 }
