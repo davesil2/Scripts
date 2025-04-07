@@ -198,14 +198,19 @@ function Get-CitrixMachines {
 
     $Result = Invoke-RestMethod @parameters
 
-    $Machines = $Result.Items
+    if (($result | measure-object).Count -gt 1) {
+        $Machines = $Result.Items
 
-    While ($Result.ContinuationToken -and $result.items.count -gt 0) {
-        $URI.Query = ('?continuationToken={0}' -f $Result.continuationToken)
-        $Parameters['Uri'] = $Uri.Uri
-        $Result = Invoke-RestMethod @parameters
-        $Machines += $result.items
+        While ($Result.ContinuationToken -and $result.items.count -gt 0) {
+            $URI.Query = ('?continuationToken={0}' -f $Result.continuationToken)
+            $Parameters['Uri'] = $Uri.Uri
+            $Result = Invoke-RestMethod @parameters
+            $Machines += $result.items
+        }
+    } else {
+        $Machines = $result
     }
+    
 
     if ($Machines) {
         return $Machines
@@ -393,7 +398,7 @@ function Add-CitrixMachineCatalogMachine {
 function Remove-CitrixMachineCatalogMachine {
     Param(
         [Parameter(Mandatory=$true)]
-        [String]$CatalogNameOrID,
+        [String]$MachineCatalogNameOrID,
         [Parameter(Mandatory=$true)]
         [String]$MachineNameOrID,
         [string]$CloudURI = 'api-us.cloud.com',
@@ -411,7 +416,7 @@ function Remove-CitrixMachineCatalogMachine {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
-    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines/{2}' -f $CloudURI,$CatalogNameOrID,$MachineNameOrID)
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines/{2}' -f $CloudURI,$MachineCatalogNameOrID,$MachineNameOrID)
 
     # configure async query value
     $Query = [System.Web.HttpUtility]::ParseQueryString('')
@@ -514,9 +519,9 @@ function Remove-CitrixDeliveryGroupMachine {
         [Parameter(Mandatory=$true)]
         [hashtable]$Headers,
         [Parameter(Mandatory=$true)]
-        [string]$MachineName,
+        [string]$MachineNameOrID,
         [Parameter(Mandatory=$true)]
-        [string]$DeliveryGroup,
+        [string]$DeliveryGroupNameOrId,
         [string]$CloudURI = "api-us.cloud.com",
         [ValidateScript(
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
@@ -530,9 +535,12 @@ function Remove-CitrixDeliveryGroupMachine {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
-    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines/{2}?async={3}' -f $CloudURI,$DeliveryGroup,$Machine)
-    
-    $URI.Query = ([System.Web.HttpUtility]::ParseQueryString('')['async'] = $async.tostring())
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines/{2}' -f $CloudURI,$DeliveryGroupNameOrId,$MachineNameOrId)
+
+    # configure async query value
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $URI.Query = $Query.ToString()
 
     $parameters = @{
         Method      = 'DELETE'
