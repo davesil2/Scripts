@@ -198,7 +198,7 @@ function Get-CitrixMachines {
 
     $Result = Invoke-RestMethod @parameters
 
-    if (($result | measure-object).Count -gt 1) {
+    if (($result.Items | measure-object).Count -gt 1) {
         $Machines = $Result.Items
 
         While ($Result.ContinuationToken -and $result.items.count -gt 0) {
