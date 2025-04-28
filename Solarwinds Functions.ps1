@@ -75,7 +75,7 @@ function Get-OrionEntityFields {
 Function Get-OrionNode {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$HostName,
         [String]$IPAddress,
@@ -189,7 +189,7 @@ function Get-OrionContainerMembers {
 function Disable-OrionNodeAlerts {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String[]]$HostURIs,
         [datetime]$BeginDate = (Get-Date),
@@ -231,7 +231,7 @@ function Disable-OrionNodeAlerts {
 function Find-OrionNodeInterfaces {
     Param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$NodeID
     )
@@ -264,7 +264,7 @@ function Find-OrionNodeInterfaces {
 function Add-OrionNodeInterfaces {
     Param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$NodeID,
         [String[]]$Interfaces
@@ -365,7 +365,7 @@ function Add-OrionNode {
 function Set-OrionNodeWMICredentials {
     Param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$NodeID,
         [Int]$WMICredentialID
@@ -402,7 +402,7 @@ function Set-OrionNodeWMICredentials {
 function Set-OrionNodePolling {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [validateset("N.Status.ICMP.Native","N.ResponseTime.ICMP.Native","N.Details.WMI.Vista","N.Uptime.WMI.XP","N.Cpu.WMI.Windows","N.Memory.WMI.Windows","N.AssetInventory.Wmi.Generic")]
         $PollingTypes = ("N.Status.ICMP.Native","N.ResponseTime.ICMP.Native","N.Details.WMI.Vista","N.Uptime.WMI.XP","N.Cpu.WMI.Windows","N.Memory.WMI.Windows","N.AssetInventory.Wmi.Generic"),
@@ -441,7 +441,7 @@ function Set-OrionNodePolling {
 function Get-OrionNodeSettings {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$NodeID
     )
@@ -461,7 +461,7 @@ function Get-OrionNodeSettings {
 function Get-OrionPollers {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [Int]$NodeID
     )
@@ -491,7 +491,7 @@ function Get-OrionPollers {
 function Get-OrionPollingEngines {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials
     )
 
@@ -510,7 +510,7 @@ function Get-OrionPollingEngines {
 function Start-OrionNodeResourceList {
     param(
         [String]$OrionServer,
-        [string]$OrionAPIPort = 17778,
+        [string]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$NodeID
     )
@@ -544,7 +544,7 @@ function Start-OrionNodeResourceList {
 function Get-OrionNodeResourceDiscoveryStatus {
     param(
         [string]$OrionServer,
-        [string]$OrionAPIPort = 17778,
+        [string]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [string]$NodeID,
         [string]$JobID
@@ -580,7 +580,7 @@ function Get-OrionNodeResourceDiscoveryStatus {
 function Import-OrionNodeResourceResult {
     param(
         [string]$OrionServer,
-        [String]$OrionAPIPort = 17778,
+        [String]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$NodeID,
         [String]$JobID
@@ -616,7 +616,7 @@ function Import-OrionNodeResourceResult {
 function Get-OrionNodeVolumes {
     param(
         [String]$OrionServer,
-        [String]$OrionAPIPort = 17778,
+        [String]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$NodeID
     )
@@ -670,7 +670,7 @@ function Start-OrionNodePolling {
 function Remove-OrionNodeVolume {
     param(
         [String]$OrionServer,
-        [Int]$OrionAPIPort = 17778,
+        [Int]$OrionAPIPort = 17774,
         [pscredential]$SWISCredentials,
         [String]$VolumeSWISUri
     )
