@@ -305,7 +305,7 @@ function Update-DoceboUser {
         [String]$EmployeeID
     )
 
-    $DoceboUser = Get-DoceboUsers `
+    $DoceboUser = Get-DoceboUserDetails `
         -FQDN $FQDN `
         -Token $Token `
         -UserID $UserID
