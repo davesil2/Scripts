@@ -456,7 +456,7 @@ function Update-DoceboUser {
             $additional_fields += [pscustomobject]@{id = 17; value = $EmployeeID}
             Write-Verbose ('[INFO] - Employee ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_17,$EmployeeID)
         }
-        if ($DoceboUser.field_19 -ne $HireDate) {
+        if (([datetime]$DoceboUser.field_19).ToString('yyyy-MM-dd') -ne $HireDate) {
             $additional_fields += [pscustomobject]@{id = 19; value = $HireDate}
             Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_19,$HireDate)
         }
