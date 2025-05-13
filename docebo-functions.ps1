@@ -373,7 +373,9 @@ function Update-DoceboUser {
         [DateOnly]$HireDate,
         [String]$EmployeeNumber,
         [String]$AssociateID,
-        [String]$EmployeeID
+        [String]$EmployeeID,
+        [validateset('yes','no')]
+        [String]$PeopleManager
     )
 
     Write-Verbose ('[INFO] - Looking for User [{0}]' -f $DoceboUser.user_id)
@@ -457,6 +459,10 @@ function Update-DoceboUser {
         if ($DoceboUser.field_19 -ne $HireDate) {
             $additional_fields += [pscustomobject]@{id = 19; value = $HireDate}
             Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_19,$HireDate)
+        }
+        if ($DoceboUser.field_26 -ne $PeopleManager) {
+            $additional_fields += [pscustomobject]@{id = 26; value = $PeopleManager}
+            Write-Verbose ('[INFO] - People Manager State [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_26,$PeopleManager)
         }
         if ($DoceboUser.manager_names.'1'.manager_id -ne $managerID) {
             $body | Add-Member -Name manager -Value ([pscustomobject]@{'1' = $managerId}) -MemberType NoteProperty
