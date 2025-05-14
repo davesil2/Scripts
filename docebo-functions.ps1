@@ -396,6 +396,12 @@ function Update-DoceboUser {
     if ($DoceboUser) {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
+        try {
+            $DoceboHireDate = ([datetime]$DoceboUser.field_19).ToString('yyyy-MM-dd')
+        } Catch {
+            $DoceboHireDate = $null 
+        }
+
         If ($DoceboUser.first_name -ne $FirstName) {
             $body | Add-Member -Name 'firstname' -Value $FirstName -MemberType NoteProperty
             Write-Verbose ('[INFO] - First Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.first_name,$FirstName)
@@ -456,9 +462,9 @@ function Update-DoceboUser {
             $additional_fields += [pscustomobject]@{id = 17; value = $EmployeeID}
             Write-Verbose ('[INFO] - Employee ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_17,$EmployeeID)
         }
-        if (([datetime]$DoceboUser.field_19).ToString('yyyy-MM-dd') -ne $HireDate) {
+        if ($DoceboHireDate -ne $HireDate) {
             $additional_fields += [pscustomobject]@{id = 19; value = $HireDate}
-            Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_19,$HireDate)
+            Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate,$HireDate)
         }
         if ($DoceboUser.field_26 -ne $PeopleManager) {
             $additional_fields += [pscustomobject]@{id = 26; value = $PeopleManager}
@@ -492,7 +498,7 @@ function Update-DoceboUser {
             Method      = 'PUT'
             URI         = $URI.Uri
             Headers     = $headers
-            Body        = ($body | ConvertTo-Json)
+            Body        = ($body | ConvertTo-Json -Depth 5)
             ErrorAction = 'silentlyContinue'
             ContentType = 'application/json'
             Verbose     = $false
@@ -684,5 +690,34 @@ function New-DoceboBranch {
 
     If ($response) {
         return $response.data
+    }
+}
+
+function New-DoceboUser {
+    param(
+        [String]$FQDN,
+        [String]$Token,
+        [String]$Email,
+        [String]$Password,
+        [String]$FirstName,
+        [String]$LastName,
+        [String]$BranchID,
+        [Switch]$Nofity
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/manage/v1/user' -f $FQDN)
+
+    $headers = @{
+        "Authorization" = "Bearer $Token"
+        "Content-Type"  = "application/json"
+    }
+
+    $body = @{
+        email                   = $Email
+        firstname               = $FirstName
+        lastname                = $LastName
+        email_validation_status = '1'
+        send_notification_email = $Notify.ToString()
+        select_orgchart         = @{$BranchID = 0}
     }
 }
