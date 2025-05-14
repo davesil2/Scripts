@@ -498,7 +498,7 @@ function Update-DoceboUser {
             Method      = 'PUT'
             URI         = $URI.Uri
             Headers     = $headers
-            Body        = ($body | ConvertTo-Json -Depth 5)
+            Body        = ($body | ConvertTo-Json -ErrorAction SilentlyContinue)
             ErrorAction = 'silentlyContinue'
             ContentType = 'application/json'
             Verbose     = $false
