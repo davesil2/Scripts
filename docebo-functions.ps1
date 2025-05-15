@@ -462,7 +462,7 @@ function Update-DoceboUser {
             $additional_fields += [pscustomobject]@{id = 17; value = $EmployeeID}
             Write-Verbose ('[INFO] - Employee ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_17,$EmployeeID)
         }
-        if ($DoceboHireDate -ne $HireDate -and $HireDate) {
+        if ($DoceboHireDate.ToString() -ne $HireDate -and $HireDate.ToString()) {
             $additional_fields += [pscustomobject]@{id = 19; value = $HireDate}
             Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate,$HireDate)
         }
@@ -498,7 +498,7 @@ function Update-DoceboUser {
             Method      = 'PUT'
             URI         = $URI.Uri
             Headers     = $headers
-            Body        = ($body | ConvertTo-Json -ErrorAction SilentlyContinue)
+            Body        = ($body | ConvertTo-Json)
             ErrorAction = 'silentlyContinue'
             ContentType = 'application/json'
             Verbose     = $false
