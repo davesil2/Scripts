@@ -114,3 +114,44 @@ function Get-TeamPassFolder {
         -Method Get `
         -URI $URI.Uri)
 }
+
+<#
+.SYNOPSIS
+
+.DESCRIPTION
+
+.EXAMPLE
+
+.PARAMETER TeampassFQDN
+
+.PARAMETER APIKey
+
+.PARAMETER ItemID
+
+#>
+function Get-TeampassItem {
+    Param(
+        [parameter(Mandatory=$true)]
+        [string]$TeampassFQDN,
+        [parameter(Mandatory=$true)]
+        [string]$APIKey,
+        [parameter(Mandatory=$true)]
+        [string]$ItemID
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/api/index.php/read/items/{1}?apikey={2}' -f $TeampassFQDN,$ItemID,$APIKey)
+
+    $parameters = @{
+        Method      = 'GET'
+        URI         = $URI.Uri
+        ErrorAction = 'silentlyContinue'
+        ContentType = 'application/json'
+        Verbose     = $false
+    }
+
+    $result = Invoke-RestMethod @parameters
+
+    if ($result) {
+        return $result
+    }
+}
