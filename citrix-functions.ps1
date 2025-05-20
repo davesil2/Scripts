@@ -535,7 +535,7 @@ function Add-CitrixDeliveryGroupMachine {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
-    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines/{2}' -f $CloudURI,$DeliveryGroupNameOrID,$MachineNameOrID)
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines' -f $CloudURI,$DeliveryGroupNameOrID)
 
     # configure async query value
     $Query = [System.Web.HttpUtility]::ParseQueryString('')
@@ -551,11 +551,13 @@ function Add-CitrixDeliveryGroupMachine {
     $parameters = @{
         Method      = 'POST'
         Headers     = $headers
-        ContentType = 'applicaiton/json'
+        ContentType = 'application/json'
         URI         = $uri.Uri
         Erroraction = 'silentlyContinue'
-        Body        = ($body | ConvertTo-Json)
+        Body        = ($body | ConvertTo-Json -Depth 10)
     }
+
+    Write-Verbose ('[INFO] - URL used is [{0}]' -f $URI.Uri)
 
     $response = Invoke-RestMethod @Parameters
 
@@ -629,6 +631,7 @@ function Get-CitrixHypervisorResources {
         [hashtable]$Headers,
         [string]$CloudURI = "api-us.cloud.com",
         [string]$HypervisorNameOrID,
+        [String]$children = 0,
         [ValidateScript(
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
             ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
