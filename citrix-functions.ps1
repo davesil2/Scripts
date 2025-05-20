@@ -521,7 +521,7 @@ function Add-CitrixDeliveryGroupMachine {
         [String]$DeliveryGroupNameOrID,
         [Parameter(Mandatory=$true)]
         [String]$MachineNameOrID,
-        [Paramter(Mandatory=$true)]
+        [Parameter(Mandatory=$true)]
         [String]$CatalogNameOrID,
         [ValidateScript(
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
