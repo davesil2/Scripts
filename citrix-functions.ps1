@@ -350,7 +350,7 @@ function Add-CitrixMachineCatalogMachine {
         [Parameter(Mandatory=$true, HelpMessage='Hypervisor Connection Name')]
         [String]$HypervisorConnection,
         [Parameter(Mandatory=$true, HelpMessage='Single or Multiple Users')]
-        [String]$AssignedUsers,
+        [String[]]$AssignedUsers,
         [ValidateScript(
             {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
             ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
@@ -363,7 +363,7 @@ function Add-CitrixMachineCatalogMachine {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
-    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs{1}/Machines' -f $CloudURI,$CatalogNameOrID)
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines' -f $CloudURI,$CatalogNameOrID)
 
     # configure async query value
     $Query = [System.Web.HttpUtility]::ParseQueryString('')
@@ -385,8 +385,11 @@ function Add-CitrixMachineCatalogMachine {
         ErrorAction = 'silentlyContinue'
         Uri         = $URI.Uri
         Headers     = $Headers
-        Body        = $Body
+        Method      = 'POST'
+        Body        = ($Body | ConvertTo-Json)
     }
+
+    Write-Verbose ('[INFO] - URI [{0}]' -f $uri.Uri)
 
     $result = Invoke-RestMethod @parameters
 
@@ -487,21 +490,52 @@ function Get-CitrixDeliveryGroups {
     }
 }
 
+<#
+.SYNOPSIS
+
+.DESCRIPTION
+
+.EXAMPLE
+
+.PARAMETER CloudURI
+
+.PARAMETER Headers
+
+.PARAMETER DeliveryGroupNameOrID
+
+.PARAMETER MachineNameOrID
+
+.PARAMETER CatalogNameOrID
+
+.PARAMETER TLSVersion
+
+.PARAMETER async
+
+#>
 function Add-CitrixDeliveryGroupMachine {
     Param(
+        [String]$CloudURI = 'api-us.cloud.com',    
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,    
         [Parameter(Mandatory=$true)]
         [String]$DeliveryGroupNameOrID,
         [Parameter(Mandatory=$true)]
         [String]$MachineNameOrID,
         [Paramter(Mandatory=$true)]
-        [String]$CatalogNameOrID
+        [String]$CatalogNameOrID,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
     )
 
     # set TLS version
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
 
     # build URI for use to access machine catalog
-    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/MachineCatalogs/{1}/Machines/{2}' -f $CloudURI,$CatalogNameOrID,$MachineNameOrID)
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines/{2}' -f $CloudURI,$DeliveryGroupNameOrID,$MachineNameOrID)
 
     # configure async query value
     $Query = [System.Web.HttpUtility]::ParseQueryString('')
@@ -509,9 +543,25 @@ function Add-CitrixDeliveryGroupMachine {
     $URI.Query = $Query.ToString()
 
     $body = @{
-        
+        AssignedMachinesToUsers = @(@{Machine = $MachineNameOrID})
+        MachineCatalog          = $CatalogNameOrID
+        Count                   = $MachineNameOrID.Count
     }
 
+    $parameters = @{
+        Method      = 'POST'
+        Headers     = $headers
+        ContentType = 'applicaiton/json'
+        URI         = $uri.Uri
+        Erroraction = 'silentlyContinue'
+        Body        = ($body | ConvertTo-Json)
+    }
+
+    $response = Invoke-RestMethod @Parameters
+
+    if ($Response) {
+        return $repsponse
+    }
 }
 
 function Remove-CitrixDeliveryGroupMachine {
@@ -552,4 +602,59 @@ function Remove-CitrixDeliveryGroupMachine {
     }
 
     Invoke-RestMethod @parameters
+}
+
+<#
+.SYNOPSIS
+
+.DESCRIPTION
+
+.EXAMPLE
+
+.PARAMETER Headers
+
+.PARAMETER CloudURI
+
+.PARAMETER HypervisorNameOrID
+
+.PARAMETER Children
+
+.PARAMETER TLSVersion
+
+.PARAMETER
+#>
+function Get-CitrixHypervisorResources {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,
+        [string]$CloudURI = "api-us.cloud.com",
+        [string]$HypervisorNameOrID,
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [switch]$async
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/hypervisors/{1}/allResources' -f $CloudURI,$HypervisorNameOrID)
+
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $Query.Add('children',$children)
+
+    $URI.Query = $Query.ToString()
+
+    $parameters = @{
+        Method      = 'GET'
+        URI         = $URI.Uri
+        Header      = $Headers
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $result = Invoke-RestMethod @Parameters
+
+    if ($result) {
+        return $result
+    }
 }
