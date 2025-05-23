@@ -693,16 +693,65 @@ function New-DoceboBranch {
     }
 }
 
+<#
+.SYNOPSIS
+
+.DESCRIPTION
+
+.EXAMPLE
+
+$FQDN           = '<web domain for docebo>'
+$ClientID       = '<client id from docebo>'
+$ClientSecret   = '<client secret from docebo'
+$Credentials    = (Get-Credential)  # a valid user in docebo
+
+$Token = Get-DoceboAuthToken `
+    -FQDN $FQDN `
+    -ClientID $ClientID `
+    -ClientSecret $clientsecret `
+    -Credentials $credentials
+
+New-DoceboUser `
+    -FQDN $FQDN `
+    -Token $Token `
+    -Email "<user@domain.com>' `
+    -password '<new password for user>' `
+    -FirstName '<users first name>' `
+    -LastName '<users last name>'
+
+.PARAMETER FQDN
+
+.PARAMETER Token
+
+.PARAMETER Email
+
+.PARAMETER Password 
+
+.PARAMETER FirstName
+
+.PARAMETER LastName
+
+.PARAMETER BranchID
+
+.PARAMETER Notify
+
+#>
 function New-DoceboUser {
     param(
+        [Parameter(Mandatory=$true)]
         [String]$FQDN,
+        [Parameter(Mandatory=$true)]
         [String]$Token,
+        [Parameter(Mandatory=$true)]
         [String]$Email,
+        [Parameter(Mandatory=$true)]
         [String]$Password,
+        [Parameter(Mandatory=$true)]
         [String]$FirstName,
+        [Parameter(Mandatory=$true)]
         [String]$LastName,
         [String]$BranchID,
-        [Switch]$Nofity
+        [Switch]$Notify
     )
 
     [System.UriBuilder]$URI = ('https://{0}/manage/v1/user' -f $FQDN)
@@ -713,11 +762,34 @@ function New-DoceboUser {
     }
 
     $body = @{
+        userid                  = $email
         email                   = $Email
+        password                = $password
         firstname               = $FirstName
         lastname                = $LastName
         email_validation_status = '1'
-        send_notification_email = $Notify.ToString()
-        select_orgchart         = @{$BranchID = 0}
+        send_notification_email = ($Notify.ToString())
+    }
+    if ($BranchID) {
+        $body += @{
+            select_orgchart = @{$BranchID = 0}
+        }
+    }
+
+    $parameters = @{
+        Method      = 'POST'
+        URI         = $URI.Uri
+        Headers     = $headers
+        Body        = ($body | ConvertTo-Json)
+        ContentType = 'application/json'
+        ErrorAction = 'silentlyContinue'
+    }
+
+    Write-Verbose $URI.Uri
+
+    $response = Invoke-RestMethod @parameters
+
+    if ($response) {
+        return $response
     }
 }
