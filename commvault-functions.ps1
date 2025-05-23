@@ -1,9 +1,13 @@
 # Commvault API Functions
 function New-CommVaultAPIToken {
     Param(
+        [Parameter(Mandatory=$true)]
         [String]$FQDN,
+        [Parameter(Mandatory=$true)]
         [String]$Username,
+        [Parameter(Mandatory=$true)]
         [String]$password,
+        [Parameter(Mandatory=$true)]
         [string]$CommServer,
         [string]$Domain,
         [switch]$ignoreCertErrors
@@ -56,171 +60,19 @@ function New-CommVaultAPIToken {
         [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
     }
 
-    $result = Invoke-RestMethod @Parameters
+    $response = Invoke-RestMethod @Parameters
 
-    if ($result) {
-        return $result
+    if ($response) {
+        return $response.token
     } else {
         throw '[ERROR] - problem logging in with username, password and fqdn'
-    }
-}
-
-function Get-CommVaultTapeStorageSystems {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$FQDN,
-        [Parameter(Mandatory=$true)]
-        [string]$APIToken,
-        [Parameter(Mandatory=$true)]
-        [switch]$ignoreCertErrors
-    )
-
-    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/v4/Storage/Tape' -f $FQDN) 
-
-    $Headers = @{
-        accept = 'application/json'
-        authorization = $APIToken
-    }
-
-    $Parameters = @{
-        Method                  = 'Get'
-        URI                     = $uri.Uri
-        ErrorAction             = 'silentlycontinue'
-        Headers                 = $Headers
-    }
-
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
-    } else {
-        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
-            [bool] CheckValidationResult (
-                [System.Net.ServicePoint]$srvPoint,
-                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
-                [System.Net.WebRequest]$request,
-                [int]$certificateProblem
-            ) {
-                return $true
-            }
-        }
-    
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
-    }
-
-    $result = Invoke-RestMethod @Parameters
-
-    if ($result) {
-        return $result
-    } else {
-        throw '[ERROR] - error getting data'
-    }
-}
-
-function Get-CommVaultTapeMediaSummary {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$FQDN,
-        [Parameter(Mandatory=$true)]
-        [string]$APIToken,
-        [Parameter(Mandatory=$false)]
-        [switch]$ignoreCertErrors,
-        [Parameter(Mandatory=$true)]
-        [string]$LibraryID
-    )
-
-    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/v4/Storage/Tape/{1}/Media' -f $FQDN,$LibraryID) 
-
-    $Headers = @{
-        accept = 'application/json'
-        authorization = $APIToken
-    }
-
-    $Parameters = @{
-        Method                  = 'Get'
-        URI                     = $uri.Uri
-        ErrorAction             = 'silentlycontinue'
-        Headers                 = $Headers
-    }
-
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
-    } else {
-        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
-            [bool] CheckValidationResult (
-                [System.Net.ServicePoint]$srvPoint,
-                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
-                [System.Net.WebRequest]$request,
-                [int]$certificateProblem
-            ) {
-                return $true
-            }
-        }
-    
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
-    }
-
-    $result = Invoke-RestMethod @Parameters
-
-    if ($result) {
-        return $result
-    } else {
-        throw '[ERROR] - error getting data'
-    }
-}
-
-function Get-CommVaultTapeLocations {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$FQDN,
-        [Parameter(Mandatory=$true)]
-        [string]$APIToken,
-        [Parameter(Mandatory=$false)]
-        [switch]$ignoreCertErrors
-    )
-
-    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/v4/Storage/Tape/Locations' -f $FQDN) 
-
-    $Headers = @{
-        accept = 'application/json'
-        authorization = $APIToken
-    }
-
-    $Parameters = @{
-        Method                  = 'Get'
-        URI                     = $uri.Uri
-        ErrorAction             = 'silentlycontinue'
-        Headers                 = $Headers
-    }
-
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
-    } else {
-        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
-            [bool] CheckValidationResult (
-                [System.Net.ServicePoint]$srvPoint,
-                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
-                [System.Net.WebRequest]$request,
-                [int]$certificateProblem
-            ) {
-                return $true
-            }
-        }
-    
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
-    }
-
-    $result = Invoke-RestMethod @Parameters
-
-    if ($result) {
-        return $result
-    } else {
-        throw '[ERROR] - error getting data'
     }
 }
 
 function Get-CommVaultReportOutput {
     Param(
         [Parameter(Mandatory=$true)]
-        $APIToken,
+        [String]$Token,
         [Parameter(Mandatory=$true)]
         [String]$ReportID,
         [Parameter(Mandatory=$true)]
@@ -269,9 +121,220 @@ function Get-CommVaultReportOutput {
         [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
     }
 
-    $Result = Invoke-RestMethod @Parameters
+    $response = Invoke-RestMethod @Parameters
     
-    if ($Result) {
-        return $Result
+    if ($response) {
+        return $response
+    }
+}
+
+function Get-CommVaultLibraries {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$FQDN,
+        [Parameter(Mandatory=$true)]
+        [string]$Token,
+        [Parameter(Mandatory=$false)]
+        [switch]$ignoreCertErrors
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/V4/Storage/Tape/Library' -f $FQDN) 
+
+    $Headers = @{
+        accept = 'application/json'
+        authorization = $APIToken
+    }
+
+    $Parameters = @{
+        Method                  = 'Get'
+        URI                     = $uri.Uri
+        ErrorAction             = 'silentlycontinue'
+        Headers                 = $Headers
+    }
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
+    } else {
+        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
+            [bool] CheckValidationResult (
+                [System.Net.ServicePoint]$srvPoint,
+                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
+                [System.Net.WebRequest]$request,
+                [int]$certificateProblem
+            ) {
+                return $true
+            }
+        }
+    
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
+    }
+
+    $response = Invoke-RestMethod @parameters
+    
+    if ($Response) {
+        return $response
+    }
+}
+
+function Get-CommvaultTapeLocations{
+    param(
+        [Parameter(Mandatory=$true)]
+        [String]$FQDN,
+        [Parameter(Mandatory=$true)]
+        [String]$Token,
+        [Parameter(Mandatory=$true)]
+        [String]$LibaryID,
+        [switch]$ignoreCertErrors
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/LibraryOperations' -f $FQDN)
+
+    $Headers = @{
+        accept          = 'application/json'
+        authorization   = $Token
+        'content-type'  = 'application/xml'
+    }
+
+    $body = ('<TMMsg_LibraryOperationRequest LibraryId="{0}" libraryOperationType="{1}"/>' -f $LibraryId,23)
+
+    $Parameters = @{
+        Method                  = 'POST'
+        URI                     = $uri.Uri
+        ErrorAction             = 'silentlycontinue'
+        Headers                 = $Headers
+        Body                    = $body
+    }
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
+    } else {
+        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
+            [bool] CheckValidationResult (
+                [System.Net.ServicePoint]$srvPoint,
+                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
+                [System.Net.WebRequest]$request,
+                [int]$certificateProblem
+            ) {
+                return $true
+            }
+        }
+
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
+    }
+
+    $response = Invoke-RestMethod @parameters
+
+    if ($response) {
+        return $response.exportOptions.exportLocations
+    }
+}
+
+function Get-CommvaultTapeDetails{
+    param(
+        [Parameter(Mandatory=$true)]
+        [String]$FQDN,
+        [Parameter(Mandatory=$true)]
+        [String]$Token,
+        [Parameter(Mandatory=$true)]
+        [String]$LibaryID,
+        [switch]$ignoreCertErrors
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/LibraryOperations' -f $FQDN)
+
+    $Headers = @{
+        accept          = 'application/json'
+        authorization   = $Token
+        'content-type'  = 'application/xml'
+    }
+
+    $body = ('<TMMsg_LibraryOperationRequest LibraryId="{0}" libraryOperationType="{1}"/>' -f $LibraryId,23)
+
+    $Parameters = @{
+        Method                  = 'POST'
+        URI                     = $uri.Uri
+        ErrorAction             = 'silentlycontinue'
+        Headers                 = $Headers
+        Body                    = $body
+    }
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
+    } else {
+        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
+            [bool] CheckValidationResult (
+                [System.Net.ServicePoint]$srvPoint,
+                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
+                [System.Net.WebRequest]$request,
+                [int]$certificateProblem
+            ) {
+                return $true
+            }
+        }
+
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
+    }
+
+    $response = Invoke-RestMethod @parameters
+
+    if ($response) {
+        return $response.exportOptions.mediaDetails | select-object mediaId,barCode,@{name='lastwritetime';e={[System.DateTimeOffset]::FromUnixTimeMilliseconds($_.lastwritetime).DateTime}},sizeofStoreData,@{name='retainDataUntil';e={[System.DateTimeOffset]::FromUnixTimeMilliseconds($_.retainDataUntil).DateTime}},status,Location,@{name='storagePolicy';e={$_.storagePolicy.name}},@{Name='StoragePolicyCopy';E={$_.storagepolicycopy.name}},@{n='mediagroup';e={$_.mediagroup.name}}
+    }
+}
+
+function Export-CommvaultTapeToSite {
+    param(
+        [Parameter(Mandatory=$true)]
+        [String]$FQDN,
+        [Parameter(Mandatory=$true)]
+        [String]$Token,
+        [Parameter(Mandatory=$true)]
+        [String]$LibaryID,
+        [Parameter(Mandatory=$true)]
+        [String]$MediaID,
+        [Parameter(Mandatory=$true)]
+        [String]$MediaLocationName,
+        [switch]$ignoreCertErrors
+    )
+
+    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/LibraryOperations' -f $FQDN) 
+
+    $Headers = @{
+        accept = 'application/json'
+        authorization = $APIToken
+        'content-type' = 'application/xml'
+    }
+
+    $body = ('<TMMsg_LibraryOperationRequest LibraryId="{0}" libraryOperationType="24"><exportOptions><mediaDetails mediaId="{1}"/><exportLocations name="{2}"/></exportOptions></TMMsg_LibraryOperationRequest>' -f $LibraryID,$MediaID,$MediaLocationName)
+
+    $Parameters = @{
+        Method                  = 'POST'
+        URI                     = $uri.Uri
+        ErrorAction             = 'silentlycontinue'
+        Headers                 = $Headers
+        Body                    = $body
+    }
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $Parameters += @{SkipCertificateCheck    = $ignoreCertErrors.ToBool()}
+    } else {
+        Invoke-Expression -Command 'class TrustAllCertsPolicy : System.Net.ICertificatePolicy {
+            [bool] CheckValidationResult (
+                [System.Net.ServicePoint]$srvPoint,
+                [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
+                [System.Net.WebRequest]$request,
+                [int]$certificateProblem
+            ) {
+                return $true
+            }
+        }
+
+        [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
+    }
+
+    $response = Invoke-RestMethod @Parameters
+
+    if ($response) {
+        return $response
     }
 }
