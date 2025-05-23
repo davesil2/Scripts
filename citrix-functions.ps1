@@ -528,6 +528,7 @@ function Add-CitrixDeliveryGroupMachine {
             ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
         )]
         [string]$TLSVersion = 'Tls12',
+        [switch]$DetailResponseRequired,
         [switch]$async
     )
 
@@ -540,6 +541,7 @@ function Add-CitrixDeliveryGroupMachine {
     # configure async query value
     $Query = [System.Web.HttpUtility]::ParseQueryString('')
     $Query.Add('async',$async.tostring())
+    $Query.Add('detailResponseRequired',$DetailResponseRequired.ToString())
     $URI.Query = $Query.ToString()
 
     $body = @{
@@ -604,6 +606,52 @@ function Remove-CitrixDeliveryGroupMachine {
     }
 
     Invoke-RestMethod @parameters
+}
+
+function Get-CitrixDeliveryGroupMachines {
+    param(
+        [String]$CloudURI = 'api-us.cloud.com',    
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Headers,    
+        [Parameter(Mandatory=$true)]
+        [String]$DeliveryGroupNameOrID,    
+        [ValidateScript(
+            {$_ -in ([enum]::GetNames([net.securityprotocoltype]))},
+            ErrorMessage = 'ERROR: TLS version must be supported on system (run [enum]::GetNames([net.securityprotocoltype]) for a valid list)'
+        )]
+        [string]$TLSVersion = 'Tls12',
+        [int]$limit = 999,
+        [switch]$async
+    )
+
+    # set TLS version
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::"$TLSVersion"
+
+    # build URI for use to access machine catalog
+    [System.UriBuilder]$URI = ('https://{0}/cvad/manage/DeliveryGroups/{1}/Machines' -f $CloudURI,$DeliveryGroupNameOrID)
+
+    # configure async query value
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $Query.Add('async',$async.tostring())
+    $Query.Add('limit',$limit)
+    $URI.Query = $Query.ToString()
+
+    $parameters = @{
+        Method      = 'GET'
+        Headers     = $headers
+        ContentType = 'application/json'
+        URI         = $uri.Uri
+        Erroraction = 'silentlyContinue'
+    }
+
+    Write-Verbose ('[INFO] - URL used is [{0}]' -f $URI.Uri)
+
+    $response = Invoke-RestMethod @Parameters
+
+    if ($Response) {
+        return $repsponse
+    }
+
 }
 
 <#
