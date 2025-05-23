@@ -277,7 +277,7 @@ function Get-CommvaultTapeDetails{
     $response = Invoke-RestMethod @parameters
 
     if ($response) {
-        return $response.exportOptions.mediaDetails | select-object mediaId,barCode,@{name='lastwritetime';e={[System.DateTimeOffset]::FromUnixTimeMilliseconds($_.lastwritetime).DateTime}},sizeofStoreData,@{name='retainDataUntil';e={[System.DateTimeOffset]::FromUnixTimeMilliseconds($_.retainDataUntil).DateTime}},status,Location,@{name='storagePolicy';e={$_.storagePolicy.name}},@{Name='StoragePolicyCopy';E={$_.storagepolicycopy.name}},@{n='mediagroup';e={$_.mediagroup.name}}
+        return $response.exportOptions.mediaDetails | select-object mediaId,barCode,@{name='lastwritetime';e={[System.DateTimeOffset]::FromUnixTimeSeconds($_.lastwritetime).DateTime}},sizeofStoreData,@{name='retainDataUntil';e={[System.DateTimeOffset]::FromUnixTimeSeconds($_.retainDataUntil).DateTime}},status,Location,@{name='storagePolicy';e={$_.storagePolicy.name}},@{Name='StoragePolicyCopy';E={$_.storagepolicycopy.name}},@{n='mediagroup';e={$_.mediagroup.name}}
     }
 }
 
