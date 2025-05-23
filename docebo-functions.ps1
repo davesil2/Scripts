@@ -307,6 +307,62 @@ function Disable-DoceboUser {
 
 .PARAMETER UserID
 
+#>
+function Enable-DoceboUser {
+    param(
+        [parameter(Mandatory=$true)]
+        [String]$FQDN,
+        [parameter(Mandatory=$true)]
+        [String]$Token,
+        [parameter(Mandatory=$true)]
+        [String]$UserID
+    )
+
+    # build uri for execution
+    [System.UriBuilder]$URI = ('https://{0}/manage/v1/user/change_status' -f $FQDN)
+
+    # setup headers
+    $headers = @{
+        "Authorization"     = ('Bearer {0}' -f $Token)
+        "Content-Type"      = 'application/json'
+    }
+
+    # set values for change
+    $body = [pscustomobject]@{
+        status      = 1
+        user_ids    = $UserID
+    }
+
+    # setup parameters for execution
+    $parameters = @{
+        Method      = 'PUT'
+        URI         = $URI.Uri
+        Headers     = $headers
+        Body        = ([system.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json)))
+        ErrorAction = 'SilentlyContinue'
+        Verbose     = $false
+    }
+
+    $response = Invoke-RestMethod @parameters
+
+    if ($response) {
+        return $response
+    }
+}
+
+<#
+.SYNOPSIS
+
+.DESCRIPTION
+
+.EXAMPLE
+
+.PARAMETER FQDN
+
+.PARAMETER Token
+
+.PARAMETER UserID
+
 .PARAMETER FirstName
 
 .PARAMETER LastName
