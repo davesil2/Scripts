@@ -7,7 +7,6 @@ function New-CommVaultAPIToken {
         [String]$Username,
         [Parameter(Mandatory=$true)]
         [String]$password,
-        [Parameter(Mandatory=$true)]
         [string]$CommServer,
         [string]$Domain,
         [switch]$ignoreCertErrors
