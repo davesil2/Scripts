@@ -235,7 +235,7 @@ function Get-CommvaultTapeDetails{
         [Parameter(Mandatory=$true)]
         [String]$Token,
         [Parameter(Mandatory=$true)]
-        [String]$LibaryID,
+        [String]$LibraryID,
         [switch]$ignoreCertErrors
     )
 
@@ -273,6 +273,8 @@ function Get-CommvaultTapeDetails{
 
         [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy'
     }
+
+    write-verbose ($parameters | convertto-json -depth 5)
 
     $response = Invoke-RestMethod @parameters
 
