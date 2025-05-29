@@ -137,18 +137,18 @@ function Get-CommVaultLibraries {
         [switch]$ignoreCertErrors
     )
 
-    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/V4/Storage/Tape/Library' -f $FQDN) 
+    [System.UriBuilder]$URI = ('https://{0}/webconsole/api/Library' -f $FQDN) 
 
     $Headers = @{
-        accept = 'application/json'
-        authorization = $APIToken
+        accept          = 'application/json'
+        authorization   = $Token
     }
 
     $Parameters = @{
-        Method                  = 'Get'
-        URI                     = $uri.Uri
-        ErrorAction             = 'silentlycontinue'
-        Headers                 = $Headers
+        Method          = 'Get'
+        URI             = $uri.Uri
+        ErrorAction     = 'silentlycontinue'
+        Headers         = $Headers
     }
 
     if ($PSVersionTable.PSEdition -eq 'Core') {
@@ -171,7 +171,7 @@ function Get-CommVaultLibraries {
     $response = Invoke-RestMethod @parameters
     
     if ($Response) {
-        return $response
+        return $response.response.entityinfo
     }
 }
 
@@ -301,9 +301,9 @@ function Export-CommvaultTapeToSite {
     [System.UriBuilder]$URI = ('https://{0}/webconsole/api/LibraryOperations' -f $FQDN) 
 
     $Headers = @{
-        accept = 'application/json'
-        authorization = $APIToken
-        'content-type' = 'application/xml'
+        accept          = 'application/json'
+        authorization   = $APIToken
+        'content-type'  = 'application/xml'
     }
 
     $body = ('<TMMsg_LibraryOperationRequest LibraryId="{0}" libraryOperationType="24"><exportOptions><mediaDetails mediaId="{1}"/><exportLocations name="{2}"/></exportOptions></TMMsg_LibraryOperationRequest>' -f $LibraryID,$MediaID,$MediaLocationName)
