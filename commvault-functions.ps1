@@ -182,7 +182,7 @@ function Get-CommvaultTapeLocations{
         [Parameter(Mandatory=$true)]
         [String]$Token,
         [Parameter(Mandatory=$true)]
-        [String]$LibaryID,
+        [String]$LibraryID,
         [switch]$ignoreCertErrors
     )
 
@@ -290,7 +290,7 @@ function Export-CommvaultTapeToSite {
         [Parameter(Mandatory=$true)]
         [String]$Token,
         [Parameter(Mandatory=$true)]
-        [String]$LibaryID,
+        [String]$LibraryID,
         [Parameter(Mandatory=$true)]
         [String]$MediaID,
         [Parameter(Mandatory=$true)]
