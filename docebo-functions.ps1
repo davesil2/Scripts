@@ -452,22 +452,20 @@ function Update-DoceboUser {
     if ($DoceboUser) {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
-        try {
-            write-verbose ('hire date is [{0}]' -f $hiredate.tostring('yyyy-MM-dd'))
-            if ($HireDate) {
-                try {
-                    $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
-                } catch {
-                    Write-Verbose ('Invalid Date in Docebo for hiredate!')
-                }
-                
-                write-verbose ('Docebo Hire Date is [{0}]' -f $DoceboHireDate.tostring('yyyy-MM-dd'))
-                if ($DoceboHireDate -ne $HireDate) {
-                    $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
-                    Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
-                }
+        write-verbose ('hire date is [{0}]' -f $hiredate.tostring('yyyy-MM-dd'))
+        if ($HireDate) {
+            try {
+                $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
+            } catch {
+                Write-Verbose ('Invalid Date in Docebo for hiredate!')
             }
-        } Catch {}
+            
+            write-verbose ('Docebo Hire Date is [{0}]' -f $DoceboHireDate.tostring('yyyy-MM-dd'))
+            if ($DoceboHireDate -ne $HireDate) {
+                $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
+                Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
+            }
+        }
 
         If ($DoceboUser.first_name -ne $FirstName) {
             $body | Add-Member -Name 'firstname' -Value $FirstName -MemberType NoteProperty
