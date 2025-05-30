@@ -452,6 +452,7 @@ function Update-DoceboUser {
     if ($DoceboUser) {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
+        $DoceboUser
         try {
             write-verbose ('hire date is [{0}]' -f $hiredate.tostring('yyyy-MM-dd'))
             if ($HireDate) {
