@@ -453,10 +453,14 @@ function Update-DoceboUser {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
         try {
-            $DoceboHireDate = ([datetime]$DoceboUser.field_19).ToString('yyyy-MM-dd')
-        } Catch {
-            $DoceboHireDate = $null 
-        }
+            if ($HireDate) {
+                $DoceboHireDate = ([datetime]$DoceboUser.field_19)
+                if ($DoceboHireDate -ne $HireDate) {
+                    $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
+                    Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
+                }
+            }
+        } Catch {}
 
         If ($DoceboUser.first_name -ne $FirstName) {
             $body | Add-Member -Name 'firstname' -Value $FirstName -MemberType NoteProperty
@@ -518,10 +522,6 @@ function Update-DoceboUser {
             $additional_fields += [pscustomobject]@{id = 17; value = $EmployeeID}
             Write-Verbose ('[INFO] - Employee ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_17,$EmployeeID)
         }
-        if ($DoceboHireDate.ToString() -ne $HireDate -and $HireDate.ToString()) {
-            $additional_fields += [pscustomobject]@{id = 19; value = $HireDate}
-            Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate,$HireDate)
-        }
         if ($DoceboUser.field_26 -ne $PeopleManager) {
             $additional_fields += [pscustomobject]@{id = 26; value = $PeopleManager}
             Write-Verbose ('[INFO] - People Manager State [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_26,$PeopleManager)
@@ -532,7 +532,7 @@ function Update-DoceboUser {
         }
     }
 
-    if ((($body.psobject.Members | ?{$_.membertype -eq 'noteproperty'}).count -gt 1) -or $additional_fields) {
+    if ((($body.psobject.Members | Where-Object {$_.membertype -eq 'noteproperty'}).count -gt 1) -or $additional_fields) {
         # build uri string
         [System.UriBuilder]$URI = ('https://{0}/manage/v1/user/{1}' -f $FQDN,$UserID)
 
