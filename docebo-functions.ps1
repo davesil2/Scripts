@@ -454,7 +454,7 @@ function Update-DoceboUser {
 
         try {
             if ($HireDate) {
-                $DoceboHireDate = ([datetime]$DoceboUser.field_19)
+                $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
                 if ($DoceboHireDate -ne $HireDate) {
                     $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
                     Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
