@@ -458,7 +458,7 @@ function Update-DoceboUser {
                 try {
                     $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
                 } catch {
-                    Write-Error ('Invalid Date in Docebo for hiredate!') -ErrorAction Continue
+                    Write-Verbose ('Invalid Date in Docebo for hiredate!')
                 }
                 
                 write-verbose ('Docebo Hire Date is [{0}]' -f $DoceboHireDate.tostring('yyyy-MM-dd'))
