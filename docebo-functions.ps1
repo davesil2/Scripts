@@ -452,11 +452,13 @@ function Update-DoceboUser {
     if ($DoceboUser) {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
-        $DoceboUser
         try {
             write-verbose ('hire date is [{0}]' -f $hiredate.tostring('yyyy-MM-dd'))
             if ($HireDate) {
-                $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
+                try {
+                    $DoceboHireDate = ([System.DateOnly]$DoceboUser.field_19)
+                } catch {}
+                
                 write-verbose ('Docebo Hire Date is [{0}]' -f $DoceboHireDate.tostring('yyyy-MM-dd'))
                 if ($DoceboHireDate -ne $HireDate -or -Not $DoceboHireDate) {
                     $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
