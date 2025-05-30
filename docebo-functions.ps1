@@ -460,10 +460,14 @@ function Update-DoceboUser {
                 Write-Verbose ('Invalid Date in Docebo for hiredate!')
             }
             
-            write-verbose ('Docebo Hire Date is [{0}]' -f $DoceboHireDate.tostring('yyyy-MM-dd'))
             if ($DoceboHireDate -ne $HireDate) {
                 $additional_fields += [pscustomobject]@{id = 19; value = $HireDate.ToString('yyyy-MM-dd')}
-                Write-Verbose ('[INFO] - Manager Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
+                if ($DoceboHireDate) {
+                    Write-Verbose ('[INFO] - Hire Date in [Docebo: {0}] does not match provided [{1}]' -f $DoceboHireDate.ToString('yyyy-MM-dd'),$HireDate.ToString('yyyy-MM-dd'))
+                } else {
+                    Write-Verbose ('[INFO] - Hire Date in [Docebo: ] does not match provided [{0}]' -f $HireDate.ToString('yyyy-MM-dd'))
+                }
+                
             }
         }
 
