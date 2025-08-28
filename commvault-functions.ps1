@@ -302,7 +302,7 @@ function Export-CommvaultTapeToSite {
 
     $Headers = @{
         accept          = 'application/json'
-        authorization   = $APIToken
+        authorization   = $Token
         'content-type'  = 'application/xml'
     }
 
