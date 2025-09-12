@@ -7,7 +7,7 @@
 
     Using BambooHR's provide developer API, this function allows a quick query against the specific BambooHR Domain when used with the API Key.  The function allows customization of output based on desired results
 
-    .PARAMETER Domain
+    .PARAMETER CompanyDomain
 
     This is the domain provided by BambooHR for your unique instance. Typically this would be the company name in the first part of the url <company>.bamboohr.com
 
@@ -63,7 +63,8 @@ function Get-BambooHRUsers {
             Mandatory=$true,
             ValueFromPipelineByPropertyName=$true
         )]
-        [string]$Domain,
+        [Alias("Domain")]
+        [string]$CompanyDomain,
         [switch]$OnlyCurrent,
         [string[]]$Fields = ("firstname","lastname","id","employeenumber","preferredname","customPreferredLastName","workemail","employmentHistoryStatus","jobtitle","supervisoremail","department","division","manager","location","hiredate","workPhone","mobilePhone","country","customBusinessUnitCode","status","customPositionID","customFunction","Exempt","terminationDate"),
         [Parameter(
@@ -73,7 +74,7 @@ function Get-BambooHRUsers {
         [string]$APIKey
     )
 
-    [System.UriBuilder]$URI = ("https://api.bamboohr.com/api/gateway.php/{0}/v1/reports/custom?format=csv&onlyCurrent={1}" -f $Domain,$OnlyCurrent.IsPresent.ToString().tolower())
+    [System.UriBuilder]$URI = ("https://api.bamboohr.com/api/gateway.php/{0}/v1/reports/custom?format=csv&onlyCurrent={1}" -f $CompanyDomain,$OnlyCurrent.IsPresent.ToString().tolower())
 
     $Body = [pscustomobject]@{fields=$fields} | ConvertTo-Json
 
@@ -97,5 +98,69 @@ function Get-BambooHRUsers {
         Return ($result | ConvertFrom-Csv)
     } else {
         throw 'Either no results returned or access denied!'
+    }
+}
+<#
+.SYNOPSIS
+This function uses BambooHR API to retrieve the users thumbnail photo profile picture.
+
+.DESCRIPTION
+
+.EXAMPLE
+
+Get-BambooHRUserPhoto -CompanyDomain "domain" -APIKey "012345678900" -EmployeeID '3391'
+
+# Returns the user photo thumbnail from the BambooHR company company.bamboohr.com with the APIKey
+
+.PARAMETER CompanyDomain
+
+This is the domain provided by BambooHR for your unique instance. Typically this would be the company name in the first part of the url <company>.bamboohr.com
+
+.PARAMETER EmployeeID
+
+this parameter should provide the EmployeeID or EEID of a single user
+
+.PARAMETER APIKey
+
+This is the API Key generated under the user account or in the admin portal for access to data.
+
+#>
+function Get-BambooHRUserPhoto {
+    Param(
+        [parameter(Mandatory=$true)]
+        [Alias("Domain")]
+        [String]$CompanyDomain,
+        [Alias("EEID")]
+        [String]$EmployeeID,
+        [String]$APIKey
+    )
+
+    # Build URL String
+    [System.UriBuilder]$URI = ("https://api.bamboohr.com/api/gateway.php/{0}/v1/employees/{1}/photo/small" -f $CompanyDomain,$EmployeeID)
+
+    # build header information
+    $Headers = @{
+        'content-type'  = 'application/json'
+        'authorization' = ("Basic {0}" -f [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("$($APIKey)`:x")))
+    }
+
+    # build web request
+    $Splat = @{
+        ErrorAction     = 'SilentlyContinue'
+        Method          = 'Get'
+        Uri             = $URI.Uri
+        Headers         = $Headers
+    }
+
+    # execute web request
+    try {
+        $response = Invoke-WebRequest @Splat
+    } catch {}
+    
+    # return content if it exists
+    if ($response.Content) {
+        return @{PhotoThumbprint = $response.Content}
+    } else {
+        throw 'Either no results returned or access denied'
     }
 }
