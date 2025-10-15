@@ -23,7 +23,7 @@ function Get-DoceboAuthToken {
         [string]$ClientID,
         [Parameter(Mandatory=$true)]
         [String]$ClientSecret,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [pscredential]$Credentials,
         [string]$GrantType = 'password'
     )
@@ -58,7 +58,7 @@ function Get-DoceboAuthToken {
     if ($response) {
         return $response.access_token
     } else {
-        Write-Error ('[ERROR] - An error occured authenticating')
+        Write-Error ('[ERROR] - An error occurred authenticating')
     }
 }
 
@@ -444,12 +444,13 @@ function Update-DoceboUser {
     $DoceboUser = Get-DoceboUsers `
         -FQDN $FQDN `
         -Token $Token `
-        -SearchText $DoceboUser.username
+        -SearchText $DoceboUser.username `
+        -ActiveUsers
 
     $body = [pscustomobject]@{}
     $additional_fields = @()
 
-    if ($DoceboUser) {
+    if ($DoceboUser -and ($DoceboUser | Measure-Object).Count -eq 1) {
         Write-Verbose ('[INFO] - Found Docebo User [{0}]' -f $DoceboUser.username)
 
         if ($HireDate) {
@@ -537,6 +538,8 @@ function Update-DoceboUser {
             $body | Add-Member -Name manager -Value ([pscustomobject]@{'1' = $managerId}) -MemberType NoteProperty
             Write-Verbose ('[INFO] - Manager ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.manager_names.'1'.manager_id,$ManagerID)
         }
+    } else {
+        return @{Changes='';Success=$False}
     }
 
     if ((($body.psobject.Members | Where-Object {$_.membertype -eq 'noteproperty'}).count -gt 1) -or $additional_fields) {
