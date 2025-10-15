@@ -542,7 +542,7 @@ function Update-DoceboUser {
         return @{Changes='';Success=$False}
     }
 
-    if ((($body.psobject.Members | Where-Object {$_.membertype -eq 'noteproperty'}).count -gt 1) -or $additional_fields) {
+    if ((($body.psobject.Members | Where-Object {$_.membertype -eq 'noteproperty'}).count -ge 1) -or $additional_fields) {
         # build uri string
         [System.UriBuilder]$URI = ('https://{0}/manage/v1/user/{1}' -f $FQDN,$UserID)
 
