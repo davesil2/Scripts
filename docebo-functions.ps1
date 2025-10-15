@@ -470,71 +470,71 @@ function Update-DoceboUser {
             }
         }
 
-        If ($DoceboUser.first_name -ne $FirstName) {
+        If ($DoceboUser.first_name -ne $FirstName -and $FirstName) {
             $body | Add-Member -Name 'firstname' -Value $FirstName -MemberType NoteProperty
             Write-Verbose ('[INFO] - First Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.first_name,$FirstName)
         }
-        if ($DoceboUser.last_name -ne $LastName) {
+        if ($DoceboUser.last_name -ne $LastName -and $LastName) {
             $body | Add-Member -Name 'lastname' -Value $LastName -MemberType NoteProperty
             Write-Verbose ('[INFO] - Last Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.last_name,$LastName)
         }
-        if ($DoceboUser.Email -ne $Email) {
+        if ($DoceboUser.Email -ne $Email -and $Email) {
             $body | Add-Member -Name 'email' -Value $Email -MemberType NoteProperty
             Write-Verbose ('[INFO] - Email in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.email,$Email)
         }
-        if ($DoceboUser.Expiration_Date -ne $ExpirationDate) {
+        if ($DoceboUser.Expiration_Date -ne $ExpirationDate -and $ExpirationDate) {
             $body | Add-Member -Name 'expiration_date' -Value $ExpirationDate -MemberType NoteProperty
             Write-Verbose ('[INFO] - Expiration Date in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.expiration_date,$ExpirationDate)
         }
-        if ($DoceboUser.field_1 -ne $Department) {
+        if ($DoceboUser.field_1 -ne $Department -and $Department) {
             $additional_fields += [pscustomobject]@{id = 1; value = $Department}
             Write-Verbose ('[INFO] - Department in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.Department,$Department)
         }
-        if ($DoceboUser.field_7 -ne $Location) {
+        if ($DoceboUser.field_7 -ne $Location -and $Location) {
             $additional_fields += [pscustomobject]@{id = 7; value = $Location}
             Write-Verbose ('[INFO] - Location in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_7,$Location)
         }
-        if ($DoceboUser.field_8 -ne $Division) {
+        if ($DoceboUser.field_8 -ne $Division -and $Division) {
             $additional_fields += [pscustomobject]@{id = 8; value = $Division}
             Write-Verbose ('[INFO] - Division in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_8,$Division)
         }
-        if ($DoceboUser.field_9 -ne $Title) {
+        if ($DoceboUser.field_9 -ne $Title -and $Title) {
             $additional_fields += [pscustomobject]@{id = 9; value = $Title}
             Write-Verbose ('[INFO] - Title in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.Title,$Title)
         }
-        if ($DoceboUser.field_10 -ne $Function) {
+        if ($DoceboUser.field_10 -ne $Function -and $Function) {
             $additional_fields += [pscustomobject]@{id = 10; value = $Function}
             Write-Verbose ('[INFO] - Function in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_10,$Function)
         }
-        if ($DoceboUser.field_11 -ne $EmploymentType) {
+        if ($DoceboUser.field_11 -ne $EmploymentType -and $EmploymentType) {
             $additional_fields += [pscustomobject]@{id = 11; value = $EmploymentType}
             Write-Verbose ('[INFO] - Employment Type in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_11,$EmploymentType)
         }
-        if ($DoceboUser.field_12 -ne $OvertimeStatus) {
+        if ($DoceboUser.field_12 -ne $OvertimeStatus -and $OvertimeStatus) {
             $additional_fields += [pscustomobject]@{id = 12; value = $OvertimeStatus}
             Write-Verbose ('[INFO] - Overtime Status in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_12,$OvertimeStatus)
         }
-        if ($DoceboUser.field_13 -ne $Manager) {
+        if ($DoceboUser.field_13 -ne $Manager -and $Manager) {
             $additional_fields += [pscustomobject]@{id = 13; value = $ADManager.DisplayName}
             Write-Verbose ('[INFO] - Manager Display Name in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_13,$Manager)
         }
-        if ($DoceboUser.field_15 -ne $EmployeeNumber) {
+        if ($DoceboUser.field_15 -ne $EmployeeNumber -and $EmployeeNumber) {
             $additional_fields += [pscustomobject]@{id = 15; value = $EmployeeNumber}
             Write-Verbose ('[INFO] - Employee Number in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_15,$EmployeeNumber)
         }
-        if ($DoceboUser.field_16 -ne $AssociateID) {
+        if ($DoceboUser.field_16 -ne $AssociateID -and $AssociateID) {
             $additional_fields += [pscustomobject]@{id = 16; value = $AssociateID}
             Write-Verbose ('[INFO] - Associate ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_16,$AssociateID)
         }
-        if ($DoceboUser.field_17 -ne $EmployeeID) {
+        if ($DoceboUser.field_17 -ne $EmployeeID -and $EmployeeID) {
             $additional_fields += [pscustomobject]@{id = 17; value = $EmployeeID}
             Write-Verbose ('[INFO] - Employee ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_17,$EmployeeID)
         }
-        if ($DoceboUser.field_26 -ne $PeopleManager) {
+        if ($DoceboUser.field_26 -ne $PeopleManager -and $PeopleManager) {
             $additional_fields += [pscustomobject]@{id = 26; value = $PeopleManager}
             Write-Verbose ('[INFO] - People Manager State [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.field_26,$PeopleManager)
         }
-        if ($DoceboUser.manager_names.'1'.manager_id -ne $managerID) {
+        if ($DoceboUser.manager_names.'1'.manager_id -ne $managerID -and $ManagerID) {
             $body | Add-Member -Name manager -Value ([pscustomobject]@{'1' = $managerId}) -MemberType NoteProperty
             Write-Verbose ('[INFO] - Manager ID in [Docebo: {0}] does not match provided [{1}]' -f $DoceboUser.manager_names.'1'.manager_id,$ManagerID)
         }
