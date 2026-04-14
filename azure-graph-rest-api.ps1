@@ -375,14 +375,11 @@ function Get-GraphAzureCosts {
             }
             grouping    = @()
         }
-    }
-                totalCost = @{
-                    name     = 'Cost'
-                    function = "Sum"
-                }
-            }
-            grouping = @()
+        totalCost = @{
+            name     = 'Cost'
+            function = "Sum"
         }
+        grouping = @()
     }
 
     # Include tags in the dataset unless explicitly excluded
