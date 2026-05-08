@@ -330,8 +330,9 @@ function Get-GraphAzureCosts {
         [ValidateSet('ActualCost','AmortizedCost')]
         [string]$CostType = 'ActualCost',
         [switch]$ExcludeTags,
-        [ValidateSet('SubscriptionId','SubscriptionName','ResourceGroupName','ResourceType','ResourceLocation','ResourceId','PublisherType')]
-        [string[]]$Grouping = @('SubscriptionId','SubscriptionName','ResourceGroupName','ResourceType','ResourceLocation','ResourceId')
+        [ValidateSet('SubscriptionId','SubscriptionName','ResourceGroupName','ResourceType','ResourceLocation','ResourceId','PublisherType','Chargetype')]
+        [string[]]$Grouping = @('SubscriptionId','SubscriptionName','ResourceGroupName','ResourceType','ResourceLocation','ResourceId','Chargetype'),
+        [switch]$noGrouping
     )
 
     # Validate date parameters
@@ -375,11 +376,6 @@ function Get-GraphAzureCosts {
             }
             grouping    = @()
         }
-        totalCost = @{
-            name     = 'Cost'
-            function = "Sum"
-        }
-        grouping = @()
     }
 
     # Include tags in the dataset unless explicitly excluded
@@ -390,6 +386,10 @@ function Get-GraphAzureCosts {
     # Add grouping dimensions to the dataset
     foreach ($group in $Grouping) {
         $Body.dataset.grouping += @{type = "Dimension"; name = $group}
+    }
+
+    if ($noGrouping) {
+        $body.dataset.Remove('grouping')
     }
 
     # Configure parameters for the REST API call
