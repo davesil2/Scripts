@@ -633,6 +633,27 @@ function Get-OrionNodeVolumes {
     Return $Response
 }
 
+function Get-OrionNodeInterfaces {
+    param(
+        [String]$OrionServer,
+        [String]$OrionAPIPort = 17774,
+        [pscredential]$SWISCredentials,
+        [String]$NodeID
+    )
+
+    $QueryParams = Get-OrionEntityFields -OrionServer $OrionServer -OrionAPIPort $OrionAPIPort -SWISCredentials $SWISCredentials -EntityName 'Orion.NPM.Interfaces'
+    $Query = ("SELECT {0} FROM Orion.NPM.Interfaces WHERE NodeID = '{1}'" -f (($QueryParams | Where-Object {-Not $_.IsNavigable}).Name -Join ','), $NodeID)
+
+    $Response = Invoke-OrionAPIQuery `
+        -OrionServer $OrionServer `
+        -OrionAPIPort $OrionAPIPort `
+        -SWISCredentials $SWISCredentials `
+        -Query $Query `
+        -ErrorAction SilentlyContinue
+
+    Return $Response
+}
+
 function Start-OrionNodePolling {
     param(
         [String]$OrionServer,
