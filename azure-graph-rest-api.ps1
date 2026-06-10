@@ -87,7 +87,7 @@ function Get-GraphAPIToken {
         [Parameter(Mandatory=$false,ParameterSetName='PemCert')]
         [string]$certPath,
         [Parameter(Mandatory=$false)]
-        [string]$scopes
+        [string]$scopes = 'https://graph.microsoft.com/.default'
     )
 
     # Build the token endpoint URL for the specified tenant
@@ -98,11 +98,6 @@ function Get-GraphAPIToken {
         grant_type    = "client_credentials"
         client_id     = $clientId
         scope         = $scopes
-    }
-
-    # Set default scope if not provided
-    if ([string]::IsNullOrEmpty($scopes)) {
-        $body.scope = "https://management.azure.com/.default"
     }
 
     # Add client secret to body if using secret-based authentication
@@ -426,5 +421,107 @@ function Get-GraphAzureCosts {
     # Return the cost data if any was retrieved
     if ($Output) {
         return $Output
+    }
+}
+
+function Get-GraphBetaIntuneManagedDevices {
+    param(
+        [string]$AccessToken,
+        [ValidateSet('id', 'userId', 'deviceName', 'managedDeviceOwnerType', 'deviceEnrollmentType', 'operatingSystem', 'osVersion', 'emailAddress', 'azureADDeviceId', 'deviceRegistrationState', 'deviceCategoryDisplayName', 'isSupervised', 'exchangeLastSuccessfulSyncDateTime', 'exchangeAccessState', 'exchangeAccessStateReason', 'remoteAssistanceSessionUrl', 'remoteAssistanceSessionErrorDetails', 'isEncrypted', 'userPrincipalName', 'model', 'manufacturer', 'imei', 'complianceGraceperiodExpirationDateTime', 'serialNumber', 'phoneNumber', 'androidSecurityPatchLevel', 'userDisplayName', 'configurationManagerClientEnabledFeatures', 'wiFiMacAddress', 'deviceHealthAttestationState', 'subscriberCarrier', 'meid', 'totalStorageSpaceInBytes', 'freeStorageSpaceInBytes', 'managedDeviceName', 'partnerReportedThreatState', 'retireAfterDateTime', 'usersLoggedOn', 'preferMdmOverGroupPolicyAppliedDateTime', 'autopilotEnrolled', 'requireUserEnrollmentApproval', 'managementCertificateExpirationDate', 'iccid', 'udid', 'roleScopeTagIds', 'windowsActiveMalwareCount', 'windowsRemediatedMalwareCount', 'notes', 'configurationManagerClientHealthState', 'configurationManagerClientInformation', 'ethernetMacAddress', 'physicalMemoryInBytes', 'processorArchitecture', 'specificationVersion', 'joinType', 'skuFamily', 'skuNumber', 'managementAgent', 'managementFeatures', 'chromeOSDeviceInfo', 'enrollmentProfileName', 'bootstrapTokenEscrowed', 'deviceFirmwareConfigurationInterfaceManaged', 'deviceIdentityAttestationDetail')]
+        [string[]]$fields = ('id','deviceName','operatingSystem','osVersion','complianceState','serialNumber','managedDeviceOwnerType','enrolledDateTime','lastSyncDateTime','userDisplayName','userPrincipalName','userId','usersLoggedOn'),
+        [ValidateSet('detectedApps', 'deviceCategory', 'deviceCompliancePolicyStates', 'deviceConfigurationStates', 'logCollectionRequests', 'managedDeviceMobileAppConfigurationStates', 'securityBaselineStates', 'windowsProtectionState', 'windowsQualityUpdateStates')]
+        [string[]]$ExtendedFields,
+        [int]$Top = 999,
+        [string]$Filter = "operatingSystem eq 'Windows'" 
+    )
+
+    [System.UriBuilder]$URI = 'https://graph.microsoft.com/beta/deviceManagement/managedDevices'
+
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $query.Add('$select', $fields -join ',')
+    $query.Add('$top', $Top)
+    if ($Filter) {
+        $Query.Add('$filter', $Filter)
+    }
+    $uri.Query = $query.ToString()
+
+    $headers = @{
+        Authorization = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+
+    $parameters = @{
+        Method  = 'GET'
+        Uri     = $URI.Uri
+        Headers = $headers
+    }
+
+    $OutPut = @()
+    While ($parameters.uri) {
+        $response = Invoke-RestMethod @parameters
+        $Output += $response.value
+        $parameters.uri = $response.'@odata.nextLink'
+    }
+
+    if ($output) {
+        return $output
+    } else {
+        throw "No devices found or invalid permissions."
+    }
+}
+
+function Get-GraphEntraUsers {
+    param(
+        $AccessToken,
+        [ValidateSet('id', 'displayName', 'givenName', 'surname', 'userPrincipalName', 'mail', 'mailNickname', 'otherMails', 'proxyAddresses', 'imAddresses', 'mobilePhone', 'businessPhones', 'faxNumber', 'streetAddress', 'city', 'state', 'postalCode', 'country', 'officeLocation', 'preferredLanguage', 'employeeId', 'employeeType', 'employeeHireDate', 'employeeLeaveDateTime', 'externalUserState', 'externalUserStateChangeDateTime','accountEnabled', 'createdDateTime', 'deletedDateTime', 'lastPasswordChangeDateTime', 'signInSessionsValidFromDateTime', 'onPremisesSyncEnabled', 'onPremisesLastSyncDateTime', 'onPremisesDistinguishedName', 'onPremisesDomainName', 'onPremisesSamAccountName', 'onPremisesUserPrincipalName', 'onPremisesImmutableId', 'onPremisesSecurityIdentifier', 'onPremisesProvisioningErrors','jobTitle', 'department', 'companyName', 'division','ageGroup', 'consentProvidedForMinor', 'legalAgeGroupClassification', 'aboutMe', 'birthday', 'hireDate', 'interests', 'mySite', 'pastProjects', 'preferredName', 'responsibilities', 'schools', 'skills','userType', 'passwordPolicies', 'passwordProfile', 'identities', 'authorizationInfo', 'securityIdentifier', 'showInAddressList','usageLocation', 'preferredDataLocation', 'infoCatalogs', 'isResourceAccount', 'mailboxSettings', 'deviceEnrollmentLimit','createdDateTime', 'renewedDateTime')]
+        $Fields = @('id','userPrincipalName','displayName','mail'),
+        $Top = 999,
+        [ValidateSet('manager','memberof','directReports')]
+        $ExtendedFields,
+        $Filter
+    )
+
+    [system.uribuilder]$URI = 'https://graph.microsoft.com/v1.0/users'
+
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    if ($filter) {
+        $query.add('$filter', $filter)
+        $query.add('$count', 'true')
+    }
+    $query.Add('$select', $fields -join ',')
+    $query.Add('$top', $Top)
+    if ($ExtendedFields) {
+        $Query.Add('$expand', $ExtendedFields -join ',')
+    }
+    $URI.Query = $query.ToString()
+
+    $headers = @{
+        Authorization = "Bearer $accessToken"
+        "Content-Type" = "application/json"
+    }
+
+    if ($filter) {
+        $headers += @{
+            ConsistencyLevel = 'eventual'
+        }
+    }
+
+    $parameters = @{
+        Method  = 'GET'
+        Uri     = $URI.Uri
+        Headers = $headers
+    }
+
+    $OutPut = @()
+    While ($parameters.uri) {
+        $response = Invoke-RestMethod @parameters
+        $Output += $response.value
+        $parameters.uri = $response.'@odata.nextLink'
+    }
+
+    if ($Output) {
+        return $OutPut
+    } else {
+        throw "No users found or invalid permissions."
     }
 }
