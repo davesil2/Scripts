@@ -525,3 +525,40 @@ function Get-GraphEntraUsers {
         throw "No users found or invalid permissions."
     }
 }
+
+function Add-GraphSharePointItemListComment {
+    param(
+        $Token,
+        $SiteURL,
+        $ListName,
+        $ItemId,
+        $Comment
+    )
+
+    [System.UriBuilder]$URI = ("{0}/_api/web/lists/GetByTitle('{1}')/Items({2})/Comments" -f $SiteURL,$ListName,$ItemId )
+
+    $Headers = @{
+        "Authorization" = "Bearer $($token)"
+        "Accept"        = "application/json;odata=verbose"
+        "Content-Type"  = "application/json;odata=verbose"
+    }
+
+    $Body = @{
+        '__metadata' = @{ 'type' = 'Microsoft.SharePoint.Comments.comment' }
+        'text'       = $Comment
+    }
+
+    $Parameters = @{
+        Uri         = $URI.Uri
+        Method      = 'Post'
+        Headers     = $Headers
+        Body        = ($Body | ConvertTo-Json)
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $response = Invoke-RestMethod @Parameters
+
+    if ($response) {
+        return $response.d | Select-Object @{Name='CommentId';Expression={$_.id}},itemId,text,createddate
+    }
+}
