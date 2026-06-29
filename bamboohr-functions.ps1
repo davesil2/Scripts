@@ -105,6 +105,87 @@ function Get-BambooHRUsers {
     }
 }
 
+function Get-BambooHRUser {
+    param(
+        [Parameter(Mandatory=$true)]
+        [Alias("Domain")]
+        [string]$CompanyDomain,
+
+        [Parameter(Mandatory=$true)]
+        [Alias("EEID")]
+        [string]$EmployeeID,
+
+        [string[]]$fields,
+
+        [Parameter(Mandatory=$true)]
+        [string]$APIKey
+    )
+
+    [System.UriBuilder]$URI = ("https://{0}.bamboohr.com/api/v1/employees/{1}" -f $CompanyDomain, $EmployeeID)
+
+    # Add the API version query parameter
+    $Query = [System.Web.HttpUtility]::ParseQueryString('')
+    $query.Add('fields', ($fields -join ','))
+    $uri.Query = $query.ToString()
+
+    $headers = @{
+        'Accept'        = 'application/json'
+        'Content-Type'  = 'application/json'
+        'Authorization' = ("Basic {0}" -f [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("$($APIKey)`:x")))
+    }
+
+    $parameters = @{
+        Uri         = $URI.Uri
+        Method      = 'GET'
+        Headers     = $headers
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $response = Invoke-WebRequest @parameters
+
+    return ($response.Content | ConvertFrom-Json)
+}
+
+function Get-BambooHRUserTableData {
+    param(
+        [Parameter(Mandatory=$true)]
+        [Alias("Domain")]
+        [string]$CompanyDomain,
+
+        [Parameter(Mandatory=$true)]
+        [Alias("EEID")]
+        [string]$EmployeeID,
+
+        [string]$TableName,
+
+        [Parameter(Mandatory=$true)]
+        [string]$APIKey
+    )
+
+    [System.UriBuilder]$URI = ("https://{0}.bamboohr.com/api/v1/employees/{1}/tables/{2}" -f $CompanyDomain, $EmployeeID, $TableName)
+
+    $headers = @{
+        'Accept'        = 'application/json'
+        'Content-Type'  = 'application/json'
+        'Authorization' = ("Basic {0}" -f [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("$($APIKey)`:x")))
+    }
+
+    $parameters = @{
+        Uri         = $URI.Uri
+        Method      = 'GET'
+        Headers     = $headers
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $response = Invoke-WebRequest @parameters
+
+    if ($response.Content) {
+        return ($response.Content | ConvertFrom-Json)
+    } else {
+        throw 'Either no results returned or access denied.'
+    }
+}
+
 function Get-BambooHRUserPhoto {
     <#
     .SYNOPSIS
@@ -371,7 +452,7 @@ function Get-BambooHRDataSetFields {
     The BambooHR API key used for Basic authentication.
 
     .EXAMPLE
-    Get-BambooHRDataSetFields -CompanyDomain "companydomain" -DataSetName "employees" -APIKey "1234123454325432"
+    Get-BambooHRDataSetFields -CompanyDomain "companydomain" -DataSetName "employee" -APIKey "1234123454325432"
     #>
     [CmdletBinding()]
     Param(
@@ -398,7 +479,7 @@ function Get-BambooHRDataSetFields {
         Uri         = $URI.Uri
         Method      = 'GET'
         Headers     = $Headers
-        ErrorAction = 'Stop'
+        ErrorAction = 'stop'
     }
 
     $results = @()
@@ -421,7 +502,6 @@ function Get-BambooHRDataSetFields {
         throw 'Either no results returned or access denied.'
     }
 }
-
 
 function Get-BambooHRDataSetData {
     <#
@@ -506,16 +586,16 @@ function Get-BambooHRDataSetData {
     $results = @()
     while ($WebRequest.URI) {
         try {
-            $response = Invoke-WebRequest @WebRequest
+            $response = Invoke-WebRequest @WebRequest | convertfrom-json
         } catch {
             throw "BambooHR request failed: $($_.Exception.Message)"
         }
 
-        if (($response.content | convertfrom-json).data) {
-            $results += ($response.content | convertfrom-json).data.fields
+        if ($response.data) {
+            $results += $response.data.fields
         }
 
-        $WebRequest.URI = ($response.content | convertfrom-json).links.next
+        $WebRequest.URI = $response.links.next
     }
 
     if ($results) { 
